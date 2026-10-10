@@ -1,0 +1,14 @@
+# Copy this file to vocab.txt (which is not tracked in the public repository) and put your household's names in it.
+# Words the speech recognizers get wrong. Names below are CORRECTED TO (a near miss like "Bela" becomes "Bella");
+# a leading + means "only hint it to Whisper" (common words, device words). Add family and pet names here.
+Rex
+Bella
+Sam
+Alex
++Computer
++thermostat
++floodlight
++TV lights
++porch light
++driveway camera
++back yard camera

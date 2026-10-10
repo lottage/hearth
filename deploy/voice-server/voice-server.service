@@ -1,0 +1,23 @@
+[Unit]
+Description=Voice server (STT + TTS): Parakeet / Moonshine / Whisper and Kokoro, HTTP :8210, Wyoming :10301 / :10201
+After=network.target
+
+[Service]
+User=voiceserver
+Group=voiceserver
+WorkingDirectory=/opt/voice-server
+Environment=VOICE_MODELS=/opt/models/voice
+Environment=VOICE_STT_DEFAULT=parakeet
+Environment=VOICE_STT_THREADS=3
+Environment=VOICE_TTS_THREADS=4
+Environment=WYOMING_STT_PORT=10301
+Environment=WYOMING_TTS_PORT=10201
+ExecStart=/opt/voice-server/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8210
+Restart=on-failure
+RestartSec=3
+# VM 102 also hosts the LLM engines: keep this service from crowding them out
+Nice=5
+MemoryMax=3G
+
+[Install]
+WantedBy=multi-user.target

@@ -266,6 +266,10 @@ def validate(body: Any, existing: Dict[str, Any]) -> Tuple[Dict[str, Any], List[
                     out["token"] = tok
             elif tok is not None and not isinstance(tok, str):
                 errors.append("homeassistant.token must be text")
+            stored_url, stored_tok = _stored_ha(existing)
+            if "url" in out and stored_tok and "token" not in out and out["url"].rstrip("/") != stored_url.rstrip("/"):
+                # the stored token must not follow a new address (it would be sent there on the next call)
+                errors.append("homeassistant.url changed: paste the token again (a stored token is never sent to a new address)")
             if out:
                 clean["homeassistant"] = out
 

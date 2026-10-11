@@ -36,6 +36,21 @@ Hearth registers its tools, routes and hooks with the platform when `config.json
   text-to-speech server with Wyoming endpoints for Home Assistant, `cluster-bridge/wildlife_admin.py` applies
   presence corrections on the camera host.
 
+## Security
+
+Hearth runs on StoneSage's login (see the Security section of the [StoneSage README](https://github.com/lottage/stonesage)):
+one server key, a session cookie for browsers, a bearer for scripts, no cross-origin access.
+
+- **Home Assistant's Ollama integration** cannot send a header. Put Home Assistant's address in `api.trusted_hosts`; that
+  machine then reaches only `/api/chat`, `/api/tags`, `/api/version`, `/api/show` and `/metrics`.
+- **Locks, garage doors and alarms always ask.** Computer asks for a yes before unlocking or opening, and the cockpit's own
+  service route refuses locks, covers, valves, sirens and alarm panels outright. The raw Home Assistant service route
+  (`/api/hass/call`) does not exist unless `features.raw_ha_call` is true.
+- **The Home Assistant token never leaves its address.** It is never returned by the API, and changing the Home Assistant URL
+  (in the setup wizard or the settings) requires the token to be pasted again.
+- **Camera frames, presence and chats** are behind the login like everything else; the Alexa relay is outbound-only and
+  sealed with a shared key that the settings API masks.
+
 ## Install with Docker
 
 Docker works the same on Linux, Windows and macOS. Hearth's dependencies include Lodestone, whose installer writes the
@@ -45,12 +60,13 @@ download on the first start.
 ```
 pip install git+https://github.com/lottage/hearth       # brings Lodestone and StoneSage along
 python -m lodestone.installer --docker                  # looks at the machine, writes docker-compose.yml and .env here
-# fill HASS_TOKEN (a Home Assistant long-lived access token) and LODESTONE_API_KEY in .env, then
+# the installer wrote your API keys into .env; fill HASS_TOKEN (a Home Assistant long-lived access token), then
 docker compose up -d
 ```
 
-The cockpit is on `http://localhost:8888` and the models' OpenAI-compatible address on `http://localhost:8000/v1`, both
-bound to this computer only until you change `STONESAGE_BIND` / `LODESTONE_BIND` in `.env`. On the first start
+The cockpit is on `http://localhost:8888` (log in with `STONESAGE_API_KEY` from `.env`) and the models' OpenAI-compatible
+address on `http://localhost:8000/v1` (send `LODESTONE_API_KEY` as a bearer), both bound to this computer only until you
+change `STONESAGE_BIND` / `LODESTONE_BIND` in `.env`; to reach the cockpit by a host name, list it in `STONESAGE_ALLOWED_HOSTS`. On the first start
 `config.json` is written into the `stonesage-config` volume from the environment (Hearth enabled, the engines as
 `cluster.*_url`, your Home Assistant URL and token); after that it is yours to edit in the cockpit. Describe the house
 there (`household`, `infra_words`, see below). Without Python, `docker/docker-compose.yml` and `docker/.env.example` in

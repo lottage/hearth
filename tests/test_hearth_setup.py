@@ -451,6 +451,34 @@ class TestValidation(SetupCase):
         self.assertIn("nothing to save", self.errors({}))
 
 
+class TestStoredTokenStaysWithItsAddress(SetupCase):
+    def test_a_new_address_needs_the_token_again(self):
+        self.configured()
+        before = self.read()
+        status, data = self.call("POST", "/api/hearth/setup/save", {"homeassistant": {"url": "http://192.0.2.77:8123"}})
+        self.assertEqual(status, 400)
+        self.assertIn("paste the token again", " ".join(data["errors"]))
+        for body in ({"homeassistant": {"url": "http://192.0.2.77:8123", "token": ""}},
+                     {"homeassistant": {"url": "http://192.0.2.77:8123", "token": "\u2022\u2022\u2022\u2022cdef"}},
+                     {"homeassistant": {"url": "http://192.0.2.77:8123", "token": None}}):
+            self.assertEqual(self.call("POST", "/api/hearth/setup/save", body)[0], 400, body)
+        self.assertEqual(self.read(), before, "nothing was written")
+
+    def test_the_same_address_keeps_the_token_and_a_new_one_with_the_token_is_fine(self):
+        self.configured()
+        self.assertEqual(self.call("POST", "/api/hearth/setup/save", {"homeassistant": {"url": self.url + "/"}})[0], 200)
+        self.assertEqual(self.read()["homeassistant"]["token"], TOKEN)
+        status, _ = self.call("POST", "/api/hearth/setup/save",
+                              {"homeassistant": {"url": "http://192.0.2.77:8123", "token": "another-token-0123456789"}})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.read()["homeassistant"], {"url": "http://192.0.2.77:8123", "token": "another-token-0123456789"})
+
+    def test_a_first_setup_needs_no_stored_token(self):
+        self.write({})
+        status, _ = self.call("POST", "/api/hearth/setup/save", {"homeassistant": {"url": "http://192.0.2.77:8123"}})
+        self.assertEqual(status, 200)
+
+
 class TestRegisteredInTheApp(unittest.TestCase):
     def test_hearth_registers_the_routes(self):
         from stonesage import server

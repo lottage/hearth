@@ -86,6 +86,10 @@ HA_BLOCKED_ENTITY_SUBSTRINGS = [
     "token"
 ]
 
+# Entities this route never touches, whatever the service (unlock / open / disarm go through Computer's approval step):
+SENSITIVE_ENTITY_DOMAINS = ("lock", "cover", "alarm_control_panel", "valve", "siren", "camera")
+SENSITIVE_ENTITY_WORDS = ("garage", "gate_opener", "deadbolt", "door_lock")
+
 # Safe temperature range in Fahrenheit (protects HVAC equipment and home)
 MIN_SAFE_TEMP_F = 60.0
 MAX_SAFE_TEMP_F = 85.0
@@ -109,15 +113,23 @@ def validate_ha_action(domain: str, service: str, service_data: Dict[str, Any]) 
         return False, f"Service '{service}' is not permitted for domain '{domain}'. Allowed: {HA_ALLOWED_SERVICES[domain]}", data
 
     # 2. Entity Whitelist & Sanitization Check
-    entity_id = data.get("entity_id", "")
-    if isinstance(entity_id, list):
-        entity_id = entity_id[0] if entity_id else ""
-    entity_id = str(entity_id).strip().lower()
+    raw_ids = data.get("entity_id", "")
+    if isinstance(raw_ids, str):                      # HA accepts "a, b" as well as a list
+        raw_ids = [p for p in raw_ids.split(",")]
+    elif not isinstance(raw_ids, (list, tuple)):
+        raw_ids = [raw_ids]
+    ids = [str(e).strip().lower() for e in raw_ids if str(e).strip()]
+    entity_id = ids[0] if ids else ""
 
-    if entity_id:
+    for eid in ids:                                   # every entity named, not only the first
         for blocked in HA_BLOCKED_ENTITY_SUBSTRINGS:
-            if blocked in entity_id:
-                return False, f"Entity '{entity_id}' contains blocked substring '{blocked}'.", data
+            if blocked in eid:
+                return False, f"Entity '{eid}' contains blocked substring '{blocked}'.", data
+        if eid.split(".", 1)[0] in SENSITIVE_ENTITY_DOMAINS or any(w in eid for w in SENSITIVE_ENTITY_WORDS):
+            return False, f"Entity '{eid}' opens or unlocks something; that needs Computer's approval step, not this route.", data
+    if domain == "homeassistant" and (not ids or "all" in ids or any(k in data for k in ("area_id", "device_id", "label_id", "floor_id"))):
+        # homeassistant.turn_on fans out to whatever the target covers (locks and garage doors included)
+        return False, "homeassistant services need explicit entity_id values.", data
 
     # 3. Domain-Specific Parameter Validation
     if domain == "climate" and service == "set_temperature":

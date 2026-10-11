@@ -379,7 +379,6 @@ def _get_api_hass_camera_snapshot(h, parsed, body):
             h.send_header("Content-Type", "image/jpeg")
             h.send_header("Content-Length", str(len(data)))
             h.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-            h.send_header("Access-Control-Allow-Origin", "*")
             h.end_headers()
             h.wfile.write(data)
             return
@@ -403,7 +402,6 @@ def _get_api_hass_camera_stream(h, parsed, body):
         h.send_response(200)
         h.send_header("Content-Type", content_type)
         h.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        h.send_header("Access-Control-Allow-Origin", "*")
         h.end_headers()
         streaming = True
         while True:
@@ -809,6 +807,6 @@ def install(app_ctx) -> None:
     ctx.add_route("POST", "/api/ha/service", _post_api_ha_service)
     ctx.add_route("POST", "/api/ha/command", _post_api_ha_command)
     ctx.add_route("GET", "/api/hass/summary", _get_api_hass_summary)
-    ctx.add_route("POST", "/api/hass/call", _post_api_hass_call)
+    ctx.add_route("POST", "/api/hass/call", _post_api_hass_call, feature="raw_ha_call")   # raw service call: off unless features.raw_ha_call
     from hearth import setup_wizard
     setup_wizard.install(app_ctx)       # the setup wizard's routes (/api/hearth/setup...)

@@ -18,6 +18,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+
+from lodestone import endpoints
 from typing import Any, Callable, Dict, List, Optional
 
 from hearth.frigate_presence import EVENT_ID, norm_name
@@ -39,7 +41,7 @@ class PresenceCorrections:
     # ------------------------------------------------------------ transport ----
     def _admin(self, command: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """wildlife_admin.py on the engine host; the command is a fixed word, everything user-typed goes on stdin as JSON."""
-        res = self.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", self.ssh_host,
+        res = self.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "--", endpoints.check_ssh_target(self.ssh_host),
                         f"python3 {self.admin_path} {command}"],
                        input=json.dumps(args), capture_output=True, text=True, timeout=20)
         try:

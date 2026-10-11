@@ -129,5 +129,46 @@ class TestHomeNamesComeFromConfigOrHomeAssistant(unittest.TestCase):
             self.assertEqual(ha_policy.light_for("garden lights"), "light.hall")
 
 
+class TestPolicyHardening(unittest.TestCase):
+    def check(self, domain, service, data):
+        return ha_policy.validate_ha_action(domain, service, data)[0]
+
+    def test_every_entity_in_a_list_is_checked_not_only_the_first(self):
+        self.assertTrue(self.check("light", "turn_on", {"entity_id": ["light.a", "light.b"]}))
+        self.assertFalse(self.check("light", "turn_on", {"entity_id": ["light.a", "lock.front_door"]}))
+        self.assertFalse(self.check("switch", "turn_on", {"entity_id": "switch.a, cover.garage_door"}))
+        self.assertFalse(self.check("switch", "turn_off", {"entity_id": ["switch.a", "switch.reboot_server"]}))
+
+    def test_openers_and_locks_never_go_through_this_route_whatever_the_domain(self):
+        for eid in ("lock.front_door", "cover.garage", "alarm_control_panel.home", "valve.main", "siren.hall", "switch.garage_door_opener",
+                    "button.garage_door", "switch.gate_opener", "switch.deadbolt", "LOCK.Front"):
+            for domain, service in (("switch", "turn_on"), ("button", "press"), ("homeassistant", "turn_on"), ("automation", "trigger")):
+                if domain in ha_policy.HA_ALLOWED_SERVICES and service in ha_policy.HA_ALLOWED_SERVICES[domain]:
+                    self.assertFalse(self.check(domain, service, {"entity_id": eid}), (domain, service, eid))
+
+    def test_homeassistant_services_need_explicit_entities(self):
+        for data in ({}, {"entity_id": "all"}, {"entity_id": ["all"]}, {"area_id": "living_room"}, {"device_id": "abc"},
+                     {"entity_id": "light.a", "area_id": "garage"}, {"label_id": "x"}):
+            self.assertFalse(self.check("homeassistant", "turn_on", data), data)
+        self.assertTrue(self.check("homeassistant", "turn_on", {"entity_id": "light.a"}))
+
+    def test_a_thermostat_order_still_works(self):
+        ok, why, data = ha_policy.validate_ha_action("climate", "set_temperature", {"entity_id": "climate.hall", "temperature": 70})
+        self.assertTrue(ok, why)
+
+    def test_computer_asks_by_class_not_only_by_exact_service(self):
+        from stonesage.courage.tools import always_confirm
+        self.assertTrue(always_confirm("lock", "unlock"))
+        self.assertTrue(always_confirm("cover", "open_cover"))
+        self.assertTrue(always_confirm("alarm_control_panel", "alarm_disarm"))
+        self.assertTrue(always_confirm("switch", "turn_on", "switch.garage_door_opener"))
+        self.assertTrue(always_confirm("cover", "toggle", "cover.garage_door"))
+        self.assertTrue(always_confirm("switch", "toggle", "switch.side_gate"))
+        self.assertFalse(always_confirm("switch", "turn_off", "switch.garage_door_opener"), "closing/off does not need a yes")
+        self.assertFalse(always_confirm("cover", "close_cover", "cover.garage_door"))
+        self.assertFalse(always_confirm("light", "turn_on", "light.kitchen"))
+        self.assertFalse(always_confirm("lock", "lock", "lock.front_door"))
+
+
 if __name__ == "__main__":
     unittest.main()

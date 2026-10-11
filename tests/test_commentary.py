@@ -40,8 +40,8 @@ class Rig:
         self.activity = "other"
         self.spoken, self.traces, self.vision_calls = [], [], 0
         self.cfg = {"enabled": True, "mode": "speak", "dnd": {"kitchen": DND},
-                    "arrival": {"doors": [DOOR], "cameras": ["kitchen_living_room"], "room": "kitchen", "min_away_min": 30},
-                    "activity": {"cameras": {"kitchen_living_room": "kitchen"}, "check_every_s": 120, "min_in_view_s": 45},
+                    "arrival": {"doors": [DOOR], "cameras": ["living_room"], "room": "kitchen", "min_away_min": 30},
+                    "activity": {"cameras": {"living_room": "kitchen"}, "check_every_s": 120, "min_in_view_s": 45},
                     **cfg}
         self.c = cm.Commentary(lambda: {"household": {"people": ["Alex", "Sam"]}, "commentary": self.cfg}, self.ha.get, lambda cam: self.people_in_view,
                                lambda cam: b"jpeg", self._vision, lambda msgs: "Ah, the wanderer returns.",
@@ -130,7 +130,7 @@ class TestArrival(unittest.TestCase):
         self.r.people_in_view = [{"label": "person", "for_s": 3}]
         self.r.tick()
         self.assertEqual(len(self.r.spoken), 1)
-        self.assertEqual(self.r.traces[-1]["confirmed_by"], ["seen on kitchen living room"])
+        self.assertEqual(self.r.traces[-1]["confirmed_by"], ["seen on living room"])
 
 
 class TestResting(unittest.TestCase):

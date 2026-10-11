@@ -130,9 +130,10 @@ class TestHomeHooksAddedLast(unittest.TestCase):
         set_token.assert_called_once_with("new-token")
 
     def test_chat_action_checks_and_runs_a_plain_order_and_ignores_other_text(self):
-        from hearth import services
+        from stonesage import server  # noqa: F401  (loading the server binds Home's services)
+        from hearth import ha_policy, services
         calls = []
-        with mock.patch.object(services.hass, "call_service", side_effect=lambda d, s, data: calls.append((d, s)) or {"ok": True}):
+        with mock.patch.object(services.hass, "call_service", side_effect=lambda d, s, data: calls.append((d, s)) or {"ok": True}),                 mock.patch.object(ha_policy, "_entity_lister", lambda domain: ["climate.hallway"] if domain == "climate" else []):
             self.assertIsNone(services.chat_action("tell me a joke"))
             done = services.chat_action("set the thermostat to 70")
         note, badge = done                                     # whitelisted: one checked call, a note and a badge back

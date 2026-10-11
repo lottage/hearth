@@ -1,7 +1,7 @@
 """
 Frigate presence: who and what is in view, from Frigate's own event stream (Phase 3).
 
-Frigate (LXC 128) detects objects on the iGPU and pushes every tracked object as an "events" message
+Frigate detects objects on the iGPU and pushes every tracked object as an "events" message
 (new / update / end) over its websocket (:5000/ws, the same payloads it publishes to MQTT). This module
 keeps the latest sighting per identity in memory and hands Courage a `locations` dict in the same shape
 as harness/core/home_presence_hub.py, so the presence card and presence_now pick it up unchanged.
@@ -49,7 +49,7 @@ def _score(ev: Dict[str, Any]) -> float:
 
 
 def camera_label(camera: str) -> str:
-    """'kitchen_living_room' -> 'kitchen living room' (Courage's _camera_key matches on the first word)."""
+    """'living_room' -> 'kitchen living room' (Courage's _camera_key matches on the first word)."""
     return camera.replace("_", " ")
 
 

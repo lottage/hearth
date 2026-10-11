@@ -63,7 +63,9 @@ this repository are a ready CPU stack.
 | macOS (Docker Desktop, Intel or Apple Silicon) | yes | no | no |
 
 CPU is the default when no usable GPU is visible, so the same command works everywhere (give Docker Desktop at least 8 GB
-of memory for it). `--gpu vulkan|cuda|cpu`, `--profile gpu-large|gpu-small|cpu`, `--vision` and `--out DIR` adjust the
+of memory for it). Expect roughly 20-40 tokens per second for the small model on a modern desktop CPU and only a few on an
+older server CPU: fine for chat, slow for Computer's voice use, for which a GPU is strongly recommended (waits for the model
+are lengthened automatically on a CPU stack). `--gpu vulkan|cuda|cpu`, `--profile gpu-large|gpu-small|cpu`, `--vision` and `--out DIR` adjust the
 plan. The Hearth image is the StoneSage image plus this app (`Dockerfile` here, `FROM` the StoneSage image). This path is
 tested offline only; it has not yet been run on real GPUs. Until the images are published to ghcr.io, build them
 from the Dockerfiles (each one's header says how: Lodestone's, then StoneSage's, then this one).
@@ -91,6 +93,15 @@ For the models, `sudo python -m lodestone.installer --apply` sets up llama.cpp e
 
 `python -m stonesage.first_run` asks for these. Hearth needs a Home Assistant instance with a long-lived access
 token; Frigate, cameras and speakers are optional and switch features on when configured.
+
+### Set up in the browser
+
+Open the StoneSage cockpit, go to the Smart Home tab (F5) and use the Hearth setup panel (a banner offers it until the
+setup is complete). It walks through four steps: the Home Assistant address and token (with a Test button), discovery of
+the people, phones and speakers Home Assistant knows (pets you add yourself), the cameras to show, and Save. Saving keeps
+every other setting in `config.json` and leaves a timestamped backup next to it. The token is stored only in
+`config.json`; it is never shown again, returned by the API or logged. The command line does the same job:
+`python -m stonesage.first_run`.
 
 ### Voice server vocabulary
 

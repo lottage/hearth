@@ -19,8 +19,8 @@ PRESENCE = {
         "pets": [{"name": "Bella", "species": "cat", "breed": "Domestic Shorthair"}, {"name": "Rex", "species": "dog"}],
     },
     "locations": {
-        "sam": {"mtime": T - 600, "minutes_ago": 10.0, "camera": "Kitchen/Living", "doing": "walking in the kitchen"},
-        "alex": {"mtime": T - 1200, "minutes_ago": 20.0, "camera": "Kitchen/Living"},
+        "sam": {"mtime": T - 600, "minutes_ago": 10.0, "camera": "Living", "doing": "walking in the kitchen"},
+        "alex": {"mtime": T - 1200, "minutes_ago": 20.0, "camera": "Living"},
         "rex": {"mtime": T, "minutes_ago": 0.0, "camera": "kitchen living room", "source": "frigate"},
         "someone": {"mtime": T + 60, "minutes_ago": 0.0, "camera": "kitchen living room", "source": "frigate"},
         "bird-02": {"mtime": T, "minutes_ago": 5.0},
@@ -47,7 +47,7 @@ class TestBuild(unittest.TestCase):
         lp = self.out["sensor.last_person_sighting"]                                  # "someone" is newer but unnamed
         self.assertEqual(lp["state"], "Sam (Resident)")
         self.assertEqual({k: lp["attributes"][k] for k in ("person", "role", "is_resident", "camera")},
-                         {"person": "Sam", "role": "Resident", "is_resident": True, "camera": "Kitchen/Living"})
+                         {"person": "Sam", "role": "Resident", "is_resident": True, "camera": "Living"})
         self.assertTrue(lp["attributes"]["timestamp"])
         self.assertEqual(self.out["sensor.last_pet_sighting"]["state"], "Rex (Dog)")
 

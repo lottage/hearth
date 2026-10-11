@@ -1,6 +1,6 @@
 """Computer's persona: the attic computer of a home and its people's companion. Home owns it (the platform keeps only a
 neutral default, courage/prompt.py PERSONA); the names and the owner's pronouns come from the household, so the same
-text serves any home. Rendered for this homelab's household it is word-for-word the persona Computer had before
+text serves any home. Rendered for a household it is word-for-word the persona Computer had before
 (2026-10-10, checked by rendering both): its tool-choice evals were measured on that text."""
 
 from stonesage.courage.household import Household

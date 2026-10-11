@@ -48,17 +48,17 @@ class TestCourageAgent(unittest.TestCase):
         self.assertEqual(msgs[1]["role"], "system")
         card = msgs[1]["content"]
         self.assertIn("[Who is where", card)
-        self.assertIn("Bella: seen 12 min ago on Kitchen/Living Room", card)
+        self.assertIn("Bella: seen 12 min ago on Living Room", card)
         self.assertIn("Sam: no recent sighting", card)
         self.assertEqual(msgs[2], {"role": "user", "content": "hi"})
 
     def test_camera_look_runs_freely(self):
         looks = []
-        llm = ScriptedLLM(tool_call("camera_look", {"camera": "kitchen_living_room"}), reply("Bella's on the couch."))
+        llm = ScriptedLLM(tool_call("camera_look", {"camera": "living_room"}), reply("Bella's on the couch."))
         agent, _ = make_agent(llm, looks=looks)
         events = run(agent, "what's Bella doing?")
-        self.assertEqual(looks, ["camera.kitchen_living_room_hd_stream"])
-        self.assertEqual(events[0]["status"], "Looking at the kitchen living room camera…")
+        self.assertEqual(looks, ["camera.living_room_hd_stream"])
+        self.assertEqual(events[0]["status"], "Looking at the living room camera…")
 
     def test_action_waits_for_approval_then_runs_on_yes(self):
         pending = PendingActions()
@@ -123,7 +123,7 @@ class TestCourageAgent(unittest.TestCase):
         look = lambda eid, name, **kw: calls.append(kw) or "ok"
         tools = CourageTools(CourageDeps(ha_states=None, ha_call=None, presence=lambda: {}, camera_look=look, camera_scan=None,
                                          household=TEST_HOUSEHOLD))
-        tools._camera_look("kitchen_living_room")
+        tools._camera_look("living_room")
         tools._presence_now("bella")
         self.assertEqual(calls, [{}, {"people_only": True}])
 
@@ -209,7 +209,7 @@ class TestCourageAgent(unittest.TestCase):
         self.assertFalse(tools.is_direct_command("ha_call", on, "it's dark in here"))
         self.assertFalse(tools.is_direct_command("ha_call", on, "is the kitchen light on?"))
         self.assertFalse(tools.is_direct_command("ha_call", {"domain": "climate", "service": "set_temperature",
-                                                             "entity_id": "climate.nest_thermostat"}, "it's cold in here"))
+                                                             "entity_id": "climate.thermostat"}, "it's cold in here"))
         self.assertTrue(tools.is_direct_command("speak", {"message": "dinner"}, "announce dinner is ready"))
 
     def test_unlock_always_asks(self):
@@ -225,7 +225,7 @@ class TestCourageAgent(unittest.TestCase):
         llm = ScriptedLLM(tool_call("presence_now", {"who": "bella"}), reply("Bella is on the couch."))
         agent, _ = make_agent(llm, looks=looks)
         events = run(agent, "where is bella")
-        self.assertEqual(looks, ["camera.kitchen_living_room_hd_stream"])  # 12 min old > STALE_MINUTES
+        self.assertEqual(looks, ["camera.living_room_hd_stream"])  # 12 min old > STALE_MINUTES
         self.assertIn("looked_now", events[1]["result"])
 
     def test_find_fresh_subject_does_not_look(self):
@@ -237,7 +237,7 @@ class TestCourageAgent(unittest.TestCase):
 
     def test_offer_to_check_is_nudged_into_a_call(self):
         llm = ScriptedLLM(reply("Bella was last seen a while ago. Would you like me to check the cameras?"),
-                          tool_call("camera_look", {"camera": "kitchen_living_room"}), reply("She's on the couch."))
+                          tool_call("camera_look", {"camera": "living_room"}), reply("She's on the couch."))
         agent, _ = make_agent(llm)
         events = run(agent, "where is bella")
         self.assertEqual([e["type"] for e in events], ["tool_call", "tool_result", "final"])
@@ -260,14 +260,14 @@ class TestCourageReflex(unittest.TestCase):
         self.reflex = reflex
         self.ents = [
             {"entity_id": "light.living_room_tv_lights", "friendly_name": "Living Room TV Lights", "state": "on", "domain": "light"},
-            {"entity_id": "light.driveway_floodlight", "friendly_name": "Driveway/Front Door Floodlight (Timed)", "state": "off", "domain": "light"},
-            {"entity_id": "switch.string_lights", "friendly_name": "String Lights", "state": "off", "domain": "switch"},
+            {"entity_id": "light.driveway_floodlight", "friendly_name": "Driveway Floodlight (Timed)", "state": "off", "domain": "light"},
+            {"entity_id": "switch.garden_lights", "friendly_name": "Garden Lights", "state": "off", "domain": "switch"},
         ]
 
     def test_parse(self):
         p = self.reflex.parse
         self.assertEqual(p("Turn off the TV lights"), {"state": "off", "name": "the tv lights"})
-        self.assertEqual(p("string lights on please"), {"state": "on", "name": "string lights"})
+        self.assertEqual(p("garden lights on please"), {"state": "on", "name": "garden lights"})
         self.assertEqual(p("could you switch the floodlight off?"), {"state": "off", "name": "the floodlight"})
         for text in ("is the tv light on?", "it's dark in here", "turn off the lights in ten minutes and lock up", ""):
             self.assertIsNone(p(text), text)
@@ -281,11 +281,11 @@ class TestCourageReflex(unittest.TestCase):
 
     def test_camera_and_server_switches_are_not_candidates(self):
         states = {"switch": {"ok": True, "entities": [
-            {"entity_id": "switch.kitchen_living_room_privacy", "friendly_name": "Kitchen/Living Room Privacy", "state": "off"},
+            {"entity_id": "switch.living_room_privacy", "friendly_name": "Living Room Privacy", "state": "off"},
             {"entity_id": "switch.plug_led", "friendly_name": "Plug LED", "state": "on"},
-            {"entity_id": "switch.string_lights", "friendly_name": "String Lights", "state": "off"}]}}
+            {"entity_id": "switch.garden_lights", "friendly_name": "Garden Lights", "state": "off"}]}}
         names = [e["friendly_name"] for e in self.reflex.candidates(lambda d: states.get(d, {"ok": True, "entities": []}))]
-        self.assertEqual(names, ["String Lights"])
+        self.assertEqual(names, ["Garden Lights"])
 
     def test_agent_runs_reflex_without_llm(self):
         ha = FakeHA()
@@ -518,7 +518,7 @@ class TestCorrectSighting(unittest.TestCase):
         agent, _ = make_agent(llm)
         calls = []
         agent.tools.deps.correct_sighting = lambda who, action, name: calls.append((who, action, name)) or {
-            "ok": True, "corrected": "Rex on the Kitchen/Living Room, 12 min ago", "now": "filed under Bella",
+            "ok": True, "corrected": "Rex on the Living Room, 12 min ago", "now": "filed under Bella",
             "Rex_latest_now": "40 min ago on Driveway"}
         return agent, calls
 

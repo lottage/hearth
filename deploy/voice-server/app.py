@@ -1,11 +1,11 @@
-"""Voice server (VM 102): speech-to-text and text-to-speech for StoneSage, HA and the phone.
+"""Voice server: speech-to-text and text-to-speech for StoneSage, HA and the phone.
 
     POST /v1/audio/transcriptions   OpenAI-style multipart (file, model?) -> {"text", "engine", "ms"}
     POST /v1/audio/speech           OpenAI-style JSON (input, voice, speed, response_format wav|pcm|mp3) -> audio bytes
     GET  /health, GET /v1/voices
     Wyoming (Home Assistant): STT on WYOMING_STT_PORT, TTS on WYOMING_TTS_PORT (wyoming_servers.py)
 
-Replaces the CPU-only voice LXC (faster-whisper base.en ~3 s per clip, Kokoro 0.9-5 s) with the same API on a much faster host:
+Replaces the CPU-only voice host (faster-whisper base.en ~3 s per clip, Kokoro 0.9-5 s) with the same API on a much faster host:
 docs/evals/voice-bench-2026-09-29.md. LAN only, no auth (like the services it replaces).
 """
 

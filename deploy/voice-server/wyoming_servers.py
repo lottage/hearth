@@ -71,11 +71,11 @@ class TtsHandler(AsyncEventHandler):
 
 async def start(stt, tts, stt_port: int, tts_port: int) -> List[asyncio.Task]:
     stt_info = Info(asr=[AsrProgram(
-        name="stonesage-stt", description="Parakeet / Moonshine / Whisper on VM 102", attribution=_ATTRIBUTION, installed=True,
+        name="stonesage-stt", description="Parakeet / Moonshine / Whisper on the engine host", attribution=_ATTRIBUTION, installed=True,
         version="1", models=[AsrModel(name=stt.default, description=stt.default, attribution=_ATTRIBUTION, installed=True,
                                       version="1", languages=["en"])])])
     tts_info = Info(tts=[TtsProgram(
-        name="stonesage-tts", description="Kokoro (ONNX) on VM 102", attribution=_ATTRIBUTION, installed=True, version="1",
+        name="stonesage-tts", description="Kokoro (ONNX) on the engine host", attribution=_ATTRIBUTION, installed=True, version="1",
         voices=[TtsVoice(name=v, description=v, attribution=_ATTRIBUTION, installed=True, version="1",
                          languages=["en-GB" if v[:2] in ("bm", "bf") else "en-US"]) for v in tts.voices])])
     tasks = []

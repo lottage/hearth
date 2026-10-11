@@ -33,4 +33,4 @@ Writes `out/` (GITIGNORED: `index.js` contains the key): `index.js`, `package.js
   phone, since an Echo session can end before the answer.
 - Check it: `GET http://localhost:8888/api/alexa-relay/status` (requests, answered, announced, rejected, last_error, `users_seen`).
   `users_seen` holds a hash of the Alexa user id; put the owner's in `config.json alexa_relay.allowed_users` (a list) to refuse anyone else.
-- Key leaked or lost: replace `alexa_relay.key` in both config.json files (local and LXC 120), rebuild, paste `index.js` again.
+- Key leaked or lost: replace `alexa_relay.key` in both config.json files (local and the StoneSage host), rebuild, paste `index.js` again.

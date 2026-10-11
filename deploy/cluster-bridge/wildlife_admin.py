@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Presence corrections on VM 102 (called by StoneSage over SSH; deployed to /opt/cluster-bridge/wildlife_admin.py).
+Presence corrections on the engine host (called by StoneSage over SSH; deployed to /opt/cluster-bridge/wildlife_admin.py).
 
     echo '<json args>' | python3 wildlife_admin.py <command>     (args on stdin: nothing user-typed reaches a shell)
 

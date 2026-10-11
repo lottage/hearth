@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "StoneSage", "backend"))
 from stonesage.courage import CourageAgent, CourageDeps, CourageTools, PendingActions  # noqa: E402
 from household_fixture import TEST_HOUSEHOLD  # noqa: E402
 
-PRESENCE = {"locations": {"bella": {"last_seen": "01:23 PM", "minutes_ago": 12.0, "camera": "Kitchen/Living Room"},
+PRESENCE = {"locations": {"bella": {"last_seen": "01:23 PM", "minutes_ago": 12.0, "camera": "Living Room"},
                           "alex": {"last_seen": "01:43 PM", "minutes_ago": 3.0}},
             "recent_sightings": [{"entity": "Bella", "timestamp": "01:23 PM"}]}
 

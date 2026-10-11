@@ -51,8 +51,8 @@ class TestFromConfig(unittest.TestCase):
         self.assertEqual(household_from_config({"household": {"owner_pronouns": ["he"]}}).owner_pronouns, ("they", "them"))
 
     def test_camera_key(self):
-        self.assertEqual(camera_key("camera.driveway_front_door_hd_stream_direct"), "driveway_front_door")
-        self.assertEqual(camera_key("camera.kitchen_living_room_hd_stream"), "kitchen_living_room")
+        self.assertEqual(camera_key("camera.driveway_hd_stream_direct"), "driveway")
+        self.assertEqual(camera_key("camera.living_room_hd_stream"), "living_room")
         self.assertEqual(camera_key("camera.garage"), "garage")
 
 
@@ -116,7 +116,7 @@ class TestToolsRenderTheHousehold(unittest.TestCase):
 
 
 class TestHubFallback(unittest.TestCase):
-    """The harness's presence hub falls back to config.json's household when VM 102's profiles can't be read."""
+    """The harness's presence hub falls back to config.json's household when the engine host's profiles can't be read."""
 
     def test_entities_from_config(self):
         from harness.core.home_presence_hub import _household_entities

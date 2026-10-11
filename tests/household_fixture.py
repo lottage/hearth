@@ -1,5 +1,5 @@
 """The household the Courage tests run against (the platform has none of its own since docs/LAYERS.md M2: the Home app
-supplies it from config.json). Shaped like the homelab's, so the tests' names and cameras keep their meaning."""
+supplies it from config.json). Shaped like an ordinary home's, so the tests' names and cameras keep their meaning."""
 
 import json
 import os
@@ -15,13 +15,13 @@ TEST_HOUSEHOLD = Household(
     owner_pronouns=("he", "him"),
     pets={"Bella": "cat", "Rex": "dog"},
     cameras={
-        "kitchen_living_room": {"entity": "camera.kitchen_living_room_hd_stream", "name": "Kitchen/Living Room"},
-        "driveway_front_door": {"entity": "camera.driveway_front_door_hd_stream_direct", "name": "Driveway/Front Door"},
+        "living_room": {"entity": "camera.living_room_hd_stream", "name": "Living Room"},
+        "driveway": {"entity": "camera.driveway_hd_stream_direct", "name": "Driveway"},
         "side_yard": {"entity": "camera.side_yard_hd_stream_direct", "name": "Side Yard"},
         "back_yard": {"entity": "camera.back_yard_hd_stream_direct", "name": "Back Yard"},
     },
-    ptz_cameras=["kitchen_living_room", "driveway_front_door"],
-    default_camera="kitchen_living_room",
+    ptz_cameras=["living_room", "driveway"],
+    default_camera="living_room",
     phones=["alex"],
     speakers=["kitchen", "bathroom", "everywhere"],
 )

@@ -15,7 +15,7 @@ Environment=WYOMING_TTS_PORT=10201
 ExecStart=/opt/voice-server/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8210
 Restart=on-failure
 RestartSec=3
-# VM 102 also hosts the LLM engines: keep this service from crowding them out
+# The engine host also hosts the LLM engines: keep this service from crowding them out
 Nice=5
 MemoryMax=3G
 

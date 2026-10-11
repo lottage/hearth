@@ -1,5 +1,5 @@
 """
-Reflex: plain on/off orders ("turn off the tv lights", "string lights on") skip the LLM.
+Reflex: plain on/off orders ("turn off the tv lights", "garden lights on") skip the LLM.
 
 Deterministic and conservative: it fires only when the sentence is a bare on/off order and the name
 matches exactly one light, lamp, plug or fan. Anything else (questions, remarks, ambiguous names,
@@ -70,7 +70,7 @@ def match(order: Dict[str, str], ents: List[Dict[str, Any]]) -> Optional[Dict[st
     exact = [e for e in ents if set(_words(e.get("friendly_name") or "")) == want]
     if len(exact) == 1:
         return exact[0]
-    # entity ids carry names too: "String Lights" is switch.front_porch_..._lights, so "porch lights" finds it
+    # entity ids carry names too: "Garden Lights" is switch.backyard_..._lights, so "backyard lights" finds it
     hits = [e for e in ents if want <= set(_words(f"{e.get('friendly_name') or ''} {e['entity_id'].split('.', 1)[-1]}"))]
     return hits[0] if len(hits) == 1 else None
 

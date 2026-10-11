@@ -1,4 +1,4 @@
-"""Where StoneSage sends audio to be transcribed: the voice server on VM 102 first, the old voice LXC as the fallback.
+"""Where StoneSage sends audio to be transcribed: the voice server on the engine host first, the legacy voice host as the fallback.
 
 Both speak the same OpenAI-style API (POST /v1/audio/transcriptions). config.json `voice`:
     {"stt_url": "http://<vm102>:8210", "stt_fallback_url": "http://<lxc>:8200", "stt_engine": "", "timeout_s": 15}

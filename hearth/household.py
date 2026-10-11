@@ -22,11 +22,11 @@ from typing import Any, Dict
 
 from stonesage.courage.household import Household
 
-_STREAM_SUFFIX = re.compile(r"_(hd_)?stream(_direct)?$")
+_STREAM_SUFFIX = re.compile(r"_((hd|sd)_)?stream(_direct)?$")
 
 
 def camera_key(entity_id: str) -> str:
-    """'camera.driveway_front_door_hd_stream_direct' -> 'driveway_front_door' (the key tools and patrol use)."""
+    """'camera.driveway_hd_stream_direct' -> 'driveway' (also _sd_stream; the key tools and patrol use)."""
     return _STREAM_SUFFIX.sub("", entity_id.split(".", 1)[-1])
 
 

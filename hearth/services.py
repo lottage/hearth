@@ -39,35 +39,32 @@ hass = None
 load_config = None
 
 
-# PTZ Camera Preset Registry (discovered from Home Assistant Tapo: Cameras Control integration)
-CAMERA_PTZ_PRESETS = {
-    "camera.kitchen_living_room_hd_stream": {
-        "name": "Kitchen/Living Room",
-        "preset_entity": "select.kitchen_living_room_move_to_preset",
-        "presets": ["Kitchen/Front Door", "Both Doors", "Living Room"],
-        "default_preset": "Living Room",
-        "move_buttons": {
-            "up": "button.kitchen_living_room_move_up",
-            "down": "button.kitchen_living_room_move_down",
-            "left": "button.kitchen_living_room_move_left",
-            "right": "button.kitchen_living_room_move_right",
-        },
-        "angle_entity": "number.kitchen_living_room_movement_angle",
-    },
-    "camera.driveway_front_door_hd_stream_direct": {
-        "name": "Driveway/Front Door",
-        "preset_entity": "select.driveway_front_door_move_to_preset",
-        "presets": ["Doors", "Cars", "Driveway", "Garden", "Straight Out"],
-        "default_preset": "Doors",
-        "move_buttons": {
-            "up": "button.driveway_front_door_move_up",
-            "down": "button.driveway_front_door_move_down",
-            "left": "button.driveway_front_door_move_left",
-            "right": "button.driveway_front_door_move_right",
-        },
-        "angle_entity": "number.driveway_front_door_movement_angle",
-    },
-}
+def camera_ptz_registry() -> Dict[str, Dict[str, Any]]:
+    """HA camera entity -> its PTZ controls, for the cameras config.json camera_ui gives a "ptz" (the HA entity prefix of
+    a Tapo PTZ camera). presets: optional list in camera_ui; the camera's own list is read live when it is scanned.
+    default_preset: camera_ui, else patrol.cameras.<entity>.home_preset: where a scan leaves the camera."""
+    out: Dict[str, Dict[str, Any]] = {}
+    patrol = (config.get("patrol") or {}).get("cameras") or {}
+    for entity, ui in (config.get("camera_ui") or {}).items():
+        ptz = ui.get("ptz") if isinstance(ui, dict) else None
+        if not ptz:
+            continue
+        out[entity] = {
+            "name": ui.get("name") or entity,
+            "preset_entity": f"select.{ptz}_move_to_preset",
+            "presets": list(ui.get("presets") or []),
+            "default_preset": ui.get("default_preset") or (patrol.get(entity) or {}).get("home_preset") or "",
+            "move_buttons": {d: f"button.{ptz}_move_{d}" for d in ("up", "down", "left", "right")},
+            "angle_entity": f"number.{ptz}_movement_angle",
+        }
+    return out
+
+
+_QUERY_STOP = {"the", "and", "cam", "camera", "room", "door"}
+
+
+def _query_words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) > 2 and w not in _QUERY_STOP}
 
 
 def capture_live_camera_perception(user_query: str) -> Optional[str]:
@@ -76,33 +73,18 @@ def capture_live_camera_perception(user_query: str) -> Optional[str]:
     resizes to max 640px Lanczos (< 200 vision tokens), and runs optical perception via
     the vision engine (config cluster.vision_url) in a few seconds.
     """
-    q = (user_query or "").lower()
-
-    # Select best camera based on query intent
-    cam_eid = "camera.kitchen_living_room_hd_stream"
-    cam_name = "Kitchen/Living Room"
-
-    if any(k in q for k in ["driveway", "front door", "front", "car", "porch", "visitor", "stranger"]):
-        cam_eid = "camera.driveway_front_door_hd_stream_direct"
-        cam_name = "Driveway/Front Door"
-    elif any(k in q for k in ["side yard", "side"]):
-        cam_eid = "camera.side_yard_hd_stream_direct"
-        cam_name = "Side Yard"
-    elif any(k in q for k in ["back yard", "backyard", "woods", "trees", "lawn", "fence"]):
-        cam_eid = "camera.back_yard_hd_stream_direct"
-        cam_name = "Back Yard"
-    elif any(k in q for k in ["kitchen", "living room", "couch", "sofa", "cat"] + _cat_names()):
-        cam_eid = "camera.kitchen_living_room_hd_stream"
-        cam_name = "Kitchen/Living Room"
+    cam_eid, cam_name = _select_camera_for_query(user_query)
+    if not cam_eid:
+        return None
 
     # Fetch snapshot from HA proxy
     img_bytes = hass.get_camera_snapshot(cam_eid)
     if not img_bytes:
-        alt_eid = "camera.driveway_front_door_hd_stream_direct" if cam_eid != "camera.driveway_front_door_hd_stream_direct" else "camera.kitchen_living_room_hd_stream"
-        img_bytes = hass.get_camera_snapshot(alt_eid)
+        others = [(c["entity"], c["name"]) for c in _household().cameras.values() if c["entity"] != cam_eid]
+        alt_eid, alt_name = others[0] if others else ("", "")
+        img_bytes = hass.get_camera_snapshot(alt_eid) if alt_eid else None
         if img_bytes:
-            cam_eid = alt_eid
-            cam_name = "Driveway/Front Door" if alt_eid == "camera.driveway_front_door_hd_stream_direct" else "Kitchen/Living Room"
+            cam_eid, cam_name = alt_eid, alt_name
         else:
             return None
 
@@ -164,15 +146,15 @@ def capture_live_camera_perception(user_query: str) -> Optional[str]:
 
 
 def _select_camera_for_query(user_query: str) -> Tuple[str, str]:
-    """Select the best camera entity and name based on user query keywords."""
-    q = (user_query or "").lower()
-    if any(k in q for k in ["driveway", "front door", "front", "car", "porch", "visitor", "stranger"]):
-        return "camera.driveway_front_door_hd_stream_direct", "Driveway/Front Door"
-    elif any(k in q for k in ["side yard", "side"]):
-        return "camera.side_yard_hd_stream_direct", "Side Yard"
-    elif any(k in q for k in ["back yard", "backyard", "woods", "trees", "lawn", "fence"]):
-        return "camera.back_yard_hd_stream_direct", "Back Yard"
-    return "camera.kitchen_living_room_hd_stream", "Kitchen/Living Room"
+    """The camera a question is about: (entity, name). The one whose key or name shares a word with the question
+    (config.json household.cameras, or camera_ui), else the household's default camera. ("", "") without cameras."""
+    hh = _household()
+    q = _query_words(user_query)
+    for key, cam in hh.cameras.items():
+        if q & _query_words(key.replace("_", " ") + " " + str(cam.get("name", ""))):
+            return cam["entity"], cam.get("name", key)
+    default = hh.cameras.get(hh.default_camera) or next(iter(hh.cameras.values()), None)
+    return (default["entity"], default.get("name", "")) if default else ("", "")
 
 
 def _analyze_single_frame(cam_eid: str, cam_name: str, preset_label: str = "",
@@ -246,15 +228,15 @@ def scan_room_with_camera(user_query: str) -> Optional[str]:
     For cameras without PTZ presets, falls back to single-frame capture.
     """
     cam_eid, cam_name = _select_camera_for_query(user_query)
-    # Cameras without PTZ presets (Side Yard, Back Yard TC82 battery cams) — single frame
-    if not CAMERA_PTZ_PRESETS.get(cam_eid):
+    # Cameras without PTZ (battery cameras) — single frame
+    if not camera_ptz_registry().get(cam_eid):
         return capture_live_camera_perception(user_query)
     return scan_camera_presets(cam_eid, cam_name)
 
 
 def scan_camera_presets(cam_eid: str, cam_name: str) -> Optional[str]:
     """PTZ sweep of one camera through its presets; single analysed frame for cameras without presets."""
-    ptz_config = CAMERA_PTZ_PRESETS.get(cam_eid)
+    ptz_config = camera_ptz_registry().get(cam_eid)
     if not ptz_config:
         return _analyze_single_frame(cam_eid, cam_name)
     # A patrol sweep on this camera stops before its next move, and we wait (<= 10 s) until it has let go
@@ -267,6 +249,8 @@ def scan_camera_presets(cam_eid: str, cam_name: str) -> Optional[str]:
     live_opts = [p for p in ((hass.get_state(preset_entity) or {}).get("attributes") or {}).get("options") or []
                  if not is_temp_preset(p)]   # the patrol's return preset can linger in HA's list
     presets = live_opts or ptz_config["presets"]
+    if not presets:       # a PTZ camera that reports no presets: one frame where it points
+        return _analyze_single_frame(cam_eid, cam_name)
     default_preset = next((p for p in presets if p.strip() == ptz_config.get("default_preset", "").strip()), presets[0])
     now_str = datetime.now(LOCAL_TZ).strftime("%I:%M:%S %p %Z")
 
@@ -324,12 +308,13 @@ def _lookout_sentence() -> str:
             else "Specifically note if any person, visitor, or animal is visible.")
 
 
+def _camera_names() -> str:
+    """The household's camera names, for prompts: 'Kitchen, Driveway' (config.json household / camera_ui)."""
+    return ", ".join(str(c.get("name", k)) for k, c in _household().cameras.items()) or "none configured"
+
+
 def _pet_keys() -> List[str]:
     return [n.lower() for n in _household().pets]
-
-
-def _cat_names() -> List[str]:
-    return [n.lower() for n, species in _household().pets.items() if species == "cat"]
 
 
 def _phone_service(target: str = "") -> Optional[str]:
@@ -645,12 +630,12 @@ def _profile(name: str) -> Optional[Dict[str, Any]]:
 
 
 def _sentry_snapshot_bytes(fn: str) -> Optional[bytes]:
-    """A wildlife-sentry snapshot from VM 102 (name checked: letters, digits, _ . - only, .jpg)."""
+    """A wildlife-sentry snapshot from the engine host (name checked: letters, digits, _ . - only, .jpg)."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+\.jpg", fn or "") or ".." in fn:
         return None
     try:
         sub = subprocess.run(endpoints.ssh_cmd(config, f"cat /opt/cluster-bridge/wildlife/snapshots/{fn}"), capture_output=True, timeout=10)
-    except (subprocess.TimeoutExpired, OSError) as e:   # VM 102 slow or unreachable: a clean "not found", not a dead request
+    except (subprocess.TimeoutExpired, OSError) as e:   # the engine host slow or unreachable: a clean "not found", not a dead request
         logger.debug(f"sentry snapshot {fn}: {e}")
         return None
     return sub.stdout if sub.returncode == 0 and sub.stdout else None
@@ -1089,7 +1074,7 @@ def ground_context(agent_id: str, user_query: str) -> List[str]:
             if live_perception:
                 injections.append(live_perception)
 
-        # C. Query Wildlife Activity Ledger from VM 102 Cluster Bridge
+        # C. Query Wildlife Activity Ledger from the Cluster Bridge
         try:
             mcp_url = endpoints.url("mcp", config)
             req = urllib.request.Request(
@@ -1114,12 +1099,12 @@ def ground_context(agent_id: str, user_query: str) -> List[str]:
                 )
                 if has_actual_sightings:
                     injections.append(f"### [REAL-TIME HARDWARE SENSORY DATA: WILDLIFE & PERIMETER SENTRY LEDGER]\n"
-                                      f"The 24/7 FaunaSentinel Daemon on VM 102 actively monitors physical cameras (Back Yard, Driveway, Side Yard, Living Room).\n"
+                                      f"The 24/7 wildlife sentry daemon actively monitors the physical cameras ({_camera_names()}).\n"
                                       f"Recent live animal, pet, and resident sightings from the master ledger:\n{wildlife_text}")
                 else:
                     injections.append(
                         "### [REAL-TIME HARDWARE SENSORY DATA: WILDLIFE & PERIMETER SENTRY LEDGER]\n"
-                        "The 24/7 FaunaSentinel Daemon on VM 102 actively monitors physical cameras (Back Yard, Driveway, Side Yard, Living Room).\n"
+                        f"The 24/7 wildlife sentry daemon actively monitors the physical cameras ({_camera_names()}).\n"
                         "LEDGER STATUS: No new sightings or movement events were detected or logged in this immediate window."
                     )
         except Exception as e:
@@ -1325,6 +1310,7 @@ def config_saved(cfg: Dict[str, Any]) -> None:
     """Settings were saved: refresh Home's clients (the token in place; Immich is rebuilt)."""
     global immich
     hass.set_token(cfg.get("homeassistant", {}).get("token", ""))
+    hass.base_url = endpoints.url("homeassistant", cfg)      # the setup wizard can change the address too
     immich = ImmichClient(cfg.get("immich", {}), os.path.join(ROOT_DIR, "uploads"))
 
 
@@ -1353,3 +1339,5 @@ def bind(app_ctx) -> None:
     hass = HomeAssistantClient(endpoints.url("homeassistant", config),
                                config.get("homeassistant", {}).get("token", ""))
     immich = ImmichClient(config.get("immich", {}), os.path.join(ROOT_DIR, "uploads"))
+    from hearth import ha_policy      # the order parser finds the thermostat / lights among Home Assistant's own entities
+    ha_policy.bind(lambda domain: [e["entity_id"] for e in (hass.get_states(domain_filter=domain).get("entities") or [])])

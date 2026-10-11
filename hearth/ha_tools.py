@@ -216,7 +216,7 @@ def register(registry) -> None:
 
     registry.register_tool(
         name="home_assistant_get_state",
-        description="Fetches the complete real-time live state and all attributes for a specific Home Assistant entity_id (e.g. 'climate.nest_thermostat_9a6e', 'switch.water_whole_yard').",
+        description="Fetches the complete real-time live state and all attributes for a specific Home Assistant entity_id (e.g. 'climate.hallway', 'switch.garden_pump').",
         parameters={
             "type": "object",
             "properties": {

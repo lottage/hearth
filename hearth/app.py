@@ -338,35 +338,38 @@ def _get_api_voice_bench_results(h, parsed, body):
     return
 
 
+def _curated_cameras():
+    """The cameras config.json camera_ui lists, as cards: name, snapshot / stream URLs and (PTZ cameras) the presets the
+    camera reports now."""
+    from hearth import camera_ui
+    cfg = load_config()
+    cams = []
+    for entity, ui in camera_ui.camera_entries(cfg).items():
+        card = {"entity_id": entity, "name": ui.get("name", entity), "state": "idle",
+                "snapshot_url": f"/api/hass/camera_snapshot?entity_id={entity}",
+                "stream_url": f"/api/hass/camera_stream?entity_id={entity}"}
+        if ui.get("ptz"):
+            try:
+                card["presets"] = camera_ui.presets(ui["ptz"], hass.get_state)
+            except Exception:
+                card["presets"] = list(ui.get("presets") or [])
+        cams.append(card)
+    return cams
+
+
 def _get_api_hass_cameras(h, parsed, body):
     """GET /api/hass/cameras"""
-    cams = [
-        {
-            "entity_id": "camera.kitchen_living_room_hd_stream",
-            "name": "Kitchen / Living Room (Tapo C260 Pan/Tilt)",
-            "state": "idle",
-            "snapshot_url": "/api/hass/camera_snapshot?entity_id=camera.kitchen_living_room_hd_stream",
-            "stream_url": "/api/hass/camera_stream?entity_id=camera.kitchen_living_room_hd_stream",
-            "presets": ["Kitchen/Front Door", "Both Doors", "Living Room"]
-        },
-        {
-            "entity_id": "camera.driveway_front_door_hd_stream_direct",
-            "name": "Driveway / Front Door (Tapo Solar TCW90)",
-            "state": "idle",
-            "snapshot_url": "/api/hass/camera_snapshot?entity_id=camera.driveway_front_door_hd_stream_direct",
-            "stream_url": "/api/hass/camera_stream?entity_id=camera.driveway_front_door_hd_stream_direct",
-            "battery": 100,
-            "power_mode": "SOLAR",
-            "presets": ["Doors", "Cars", "Driveway", "Garden", "Straight Out"]
-        }
-    ]
-    h.send_json({"ok": True, "cameras": cams})
+    h.send_json({"ok": True, "cameras": _curated_cameras()})
     return
 
 
 def _get_api_hass_camera_snapshot(h, parsed, body):
     """GET /api/hass/camera_snapshot"""
-    entity_id = urllib.parse.parse_qs(parsed.query).get("entity_id", ["camera.kitchen_living_room_hd_stream"])[0]
+    cameras = list((load_config().get("camera_ui") or {}))
+    entity_id = urllib.parse.parse_qs(parsed.query).get("entity_id", [cameras[0] if cameras else ""])[0]
+    if not entity_id.startswith("camera."):
+        h.send_json({"ok": False, "error": "entity_id=camera.<name> is required (no camera is configured in camera_ui)"}, 400)
+        return
     ha_url = f"{hass.base_url}/api/camera_proxy/{entity_id}"
     req = urllib.request.Request(ha_url, headers=hass._get_headers())
     try:
@@ -455,7 +458,7 @@ def _post_api_presence_speak(h, parsed, body):
 
 def _post_api_voice_transcribe(h, parsed, body):
     """POST /api/voice/transcribe"""
-    # Speech-to-text: the voice server on VM 102 first, the old voice LXC as the fallback (voice_client.py).
+    # Speech-to-text: the voice server on the engine host first, the legacy voice host as the fallback (voice_client.py).
     # Frontend sends: { "audio_base64": "...", "mime_type": "audio/webm" }
     try:
         import base64 as b64mod
@@ -702,26 +705,7 @@ def _get_api_hass_summary(h, parsed, body):
     summary["automations"] = [a for a in autos_res.get("entities", []) if any(k in a.get("entity_id", "") for k in ["stonesage", "bedtime", "movie", "patrol", "eco"])]
 
     # Curated Camera Feeds
-    summary["cameras"] = [
-        {
-            "entity_id": "camera.kitchen_living_room_hd_stream",
-            "name": "Kitchen / Living Room (Tapo C260 Pan/Tilt)",
-            "state": "idle",
-            "snapshot_url": "/api/hass/camera_snapshot?entity_id=camera.kitchen_living_room_hd_stream",
-            "stream_url": "/api/hass/camera_stream?entity_id=camera.kitchen_living_room_hd_stream",
-            "presets": ["Kitchen/Front Door", "Both Doors", "Living Room"]
-        },
-        {
-            "entity_id": "camera.driveway_front_door_hd_stream_direct",
-            "name": "Driveway / Front Door (Tapo Solar TCW90)",
-            "state": "idle",
-            "snapshot_url": "/api/hass/camera_snapshot?entity_id=camera.driveway_front_door_hd_stream_direct",
-            "stream_url": "/api/hass/camera_stream?entity_id=camera.driveway_front_door_hd_stream_direct",
-            "battery": 100,
-            "power_mode": "SOLAR",
-            "presets": ["Doors", "Cars", "Driveway", "Garden", "Straight Out"]
-        }
-    ]
+    summary["cameras"] = _curated_cameras()
     summary["customizations"] = load_config().get("ha_entity_customizations", {})
     h.send_json(summary)
     return
@@ -826,3 +810,5 @@ def install(app_ctx) -> None:
     ctx.add_route("POST", "/api/ha/command", _post_api_ha_command)
     ctx.add_route("GET", "/api/hass/summary", _get_api_hass_summary)
     ctx.add_route("POST", "/api/hass/call", _post_api_hass_call)
+    from hearth import setup_wizard
+    setup_wizard.install(app_ctx)       # the setup wizard's routes (/api/hearth/setup...)

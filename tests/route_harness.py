@@ -1,7 +1,7 @@
 """Drive StoneSage's real HTTP handler in-process (no sockets): call(method, path, body) -> (status, content_type, body).
 
 Used by the route golden tests: the layer split moves route code between files, and a route must answer exactly as before.
-Runs under tests/run_tests.py's network guard, so anything a route tries to reach (Home Assistant, Frigate, VM 102) fails fast.
+Runs under tests/run_tests.py's network guard, so anything a route tries to reach (Home Assistant, Frigate, the engine host) fails fast.
 """
 
 import http.client

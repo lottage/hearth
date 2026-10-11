@@ -5,9 +5,9 @@ A sighting comes from one of two places, and a correction goes back to where it 
   frigate  ref = Frigate event id. Reject -> PUT /api/events/<id>/false_positive. Relabel -> sub_label, and for a
            person also moves that event's saved face attempts (faces/train/<id>-*.webp) into the person's face
            library, which is how Frigate's face recognition learns.
-  sentry   ref = snapshot filename on VM 102 (the name is its prefix). Reject/relabel run wildlife_admin.py there
+  sentry   ref = snapshot filename on the engine host (the name is its prefix). Reject/relabel run wildlife_admin.py there
            over SSH (args on stdin). Relabelling to a person also uploads the snapshot to Frigate's face library.
-Profiles live in known_entities.json on VM 102 (read by the presence hub and the wildlife sentry); a new person
+Profiles live in known_entities.json on the engine host (read by the presence hub and the wildlife sentry); a new person
 also gets an (empty) Frigate face profile.
 """
 
@@ -38,7 +38,7 @@ class PresenceCorrections:
 
     # ------------------------------------------------------------ transport ----
     def _admin(self, command: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        """wildlife_admin.py on VM 102; the command is a fixed word, everything user-typed goes on stdin as JSON."""
+        """wildlife_admin.py on the engine host; the command is a fixed word, everything user-typed goes on stdin as JSON."""
         res = self.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", self.ssh_host,
                         f"python3 {self.admin_path} {command}"],
                        input=json.dumps(args), capture_output=True, text=True, timeout=20)

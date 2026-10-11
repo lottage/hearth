@@ -1,6 +1,6 @@
 """Speech engines. STT: Parakeet TDT, Moonshine, faster-whisper. TTS: Kokoro (ONNX, fp32).
 
-Benchmarks (docs/evals/voice-bench-2026-09-29.md): on VM 102 these run 0.03-0.3 s per short clip, and short clips are
+Benchmarks (docs/evals/voice-bench-2026-09-29.md): on the engine host these run 0.03-0.3 s per short clip, and short clips are
 latency-bound, so 2-4 threads are best (more threads are slower). Models load lazily except the default, to keep RAM down.
 """
 

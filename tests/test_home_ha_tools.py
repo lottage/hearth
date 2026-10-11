@@ -94,5 +94,40 @@ class TestPolicySplit(unittest.TestCase):
         self.assertTrue(not allowed or 60.0 <= data.get("temperature", 0) <= 85.0)   # refused or clamped to the safe range
 
 
+class TestHomeNamesComeFromConfigOrHomeAssistant(unittest.TestCase):
+    """No thermostat or light of any particular house is built in (docs/LAYERS.md M2)."""
+
+    def lister(self, climate=(), light=()):
+        return lambda domain: list({"climate": climate, "light": light}.get(domain, ()))
+
+    def test_no_thermostat_means_no_guess(self):
+        with mock.patch.object(ha_policy, "_entity_lister", self.lister()), mock.patch.object(ha_policy, "_settings", lambda: {}):
+            ok, msg, _ = ha_policy.validate_ha_action("climate", "set_temperature", {"temperature": 70})
+            self.assertFalse(ok)
+            self.assertIn("ha_policy.thermostat", msg)
+            self.assertIsNone(ha_policy.extract_whitelisted_chat_action("set the thermostat to 70"))
+
+    def test_the_only_climate_entity_is_the_default_and_config_wins(self):
+        with mock.patch.object(ha_policy, "_entity_lister", self.lister(climate=["climate.hall"])),                 mock.patch.object(ha_policy, "_settings", lambda: {}):
+            ok, _, data = ha_policy.validate_ha_action("climate", "set_temperature", {"temperature": 70})
+            self.assertEqual((ok, data["entity_id"]), (True, "climate.hall"))
+        two = self.lister(climate=["climate.hall", "climate.den"])
+        with mock.patch.object(ha_policy, "_entity_lister", two), mock.patch.object(ha_policy, "_settings", lambda: {}):
+            self.assertEqual(ha_policy.default_thermostat(), "")                      # two: it does not pick for you
+        with mock.patch.object(ha_policy, "_entity_lister", two),                 mock.patch.object(ha_policy, "_settings", lambda: {"thermostat": "Climate.Den"}):
+            self.assertEqual(ha_policy.default_thermostat(), "climate.den")
+
+    def test_lights_come_from_config_words_or_the_closest_entity_name(self):
+        lights = self.lister(light=["light.porch_floodlight", "light.back_yard_floodlight", "light.hall"])
+        with mock.patch.object(ha_policy, "_entity_lister", lights), mock.patch.object(ha_policy, "_settings", lambda: {}):
+            self.assertEqual(ha_policy.light_for("the back yard floodlight"), "light.back_yard_floodlight")
+            self.assertEqual(ha_policy.light_for("porch light"), "light.porch_floodlight")
+            self.assertEqual(ha_policy.light_for("the kitchen light"), "")
+            act = ha_policy.extract_whitelisted_chat_action("turn on the porch light")
+            self.assertEqual(act["service_data"], {"entity_id": "light.porch_floodlight"})
+        with mock.patch.object(ha_policy, "_entity_lister", lights),                 mock.patch.object(ha_policy, "_settings", lambda: {"chat_lights": {"garden": "light.hall"}}):
+            self.assertEqual(ha_policy.light_for("garden lights"), "light.hall")
+
+
 if __name__ == "__main__":
     unittest.main()

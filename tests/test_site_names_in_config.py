@@ -55,17 +55,28 @@ class TestCameras(unittest.TestCase):
             self.assertEqual(self.services.camera_ptz_registry(), {})
 
 
-class TestGarden(unittest.TestCase):
+class TestIrrigation(unittest.TestCase):
     def test_zones_come_from_config_and_unknown_ones_are_refused(self):
-        from harness.core import landscape_garden_engine as g
-        cfg = {"garden": {"zones": {"beds": {"name": "Beds", "valve": "valve.beds"}}, "rain_delay_switch": "switch.rain"}}
+        from harness.core import irrigation_engine as g
+        cfg = {"irrigation": {"zones": {"beds": {"name": "Beds", "valve": "valve.beds"}}, "rain_delay_switch": "switch.rain"}}
         with mock.patch.object(g, "_load_stonesage_config", return_value=cfg):
             zones = g.zone_map()
             self.assertEqual(zones["beds"]["default_duration_mins"], 15)
-            self.assertFalse(g.landscape_garden_engine.open_zone("lawn")["ok"])
+            self.assertFalse(g.irrigation_engine.open_zone("lawn")["ok"])
         with mock.patch.object(g, "_load_stonesage_config", return_value={}):
             self.assertEqual(g.zone_map(), {})
-            self.assertFalse(g.landscape_garden_engine.set_rain_delay(True)["ok"])
+            self.assertFalse(g.irrigation_engine.set_rain_delay(True)["ok"])
+
+
+    def test_the_old_garden_key_is_still_read_when_irrigation_is_absent(self):
+        from harness.core import irrigation_engine as g
+        old = {"garden": {"zones": {"beds": {"name": "Beds", "valve": "valve.beds"}}}}
+        with mock.patch.object(g, "_load_stonesage_config", return_value=old):
+            self.assertEqual(list(g.zone_map()), ["beds"])
+        both = {"garden": {"zones": {"old": {"name": "Old", "valve": "valve.old"}}},
+                "irrigation": {"zones": {"new": {"name": "New", "valve": "valve.new"}}}}
+        with mock.patch.object(g, "_load_stonesage_config", return_value=both):
+            self.assertEqual(list(g.zone_map()), ["new"])           # the new key wins
 
 
 class TestReflexPrototypes(unittest.TestCase):

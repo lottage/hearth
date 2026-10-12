@@ -201,7 +201,8 @@ To stay on a version instead of "latest", set `STONESAGE_IMAGE` (and `LODESTONE_
 
 ```
 python -m stonesage.backup create                  # optional: the server will also make one
-git pull                                           # or: pip install -U lodestone stonesage hearth
+git pull                                           # or, for a pip install from GitHub (these are not on PyPI):
+pip install --upgrade "git+https://github.com/lottage/hearth@<tag>"   # <tag>: the release you move to, e.g. v0.1.0-rc.4 (StoneSage alone: the stonesage URL)
 sudo systemctl restart stonesage                   # or however you start it
 ```
 

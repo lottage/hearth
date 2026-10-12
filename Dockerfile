@@ -7,7 +7,7 @@
 #     docker build -t stonesage:local ../stonesage
 #     docker build --build-arg STONESAGE_IMAGE=stonesage:local -t hearth:local .
 # The default is a release tag, never `latest`. digest: pin at release.
-ARG STONESAGE_IMAGE=ghcr.io/lottage/stonesage:0.1.0-rc.3
+ARG STONESAGE_IMAGE=ghcr.io/lottage/stonesage:0.1.0-rc.4
 FROM ${STONESAGE_IMAGE}
 
 # The platform and Lodestone are already in the base image's environment, so only Hearth itself is installed (its

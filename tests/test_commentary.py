@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "StoneSage", "backend"))
 
 from hearth import commentary as cm  # noqa: E402
+from lodestone.site import clock  # noqa: E402
 
 NOON = datetime(2026, 9, 27, 12, 0).timestamp()   # local time: outside the default quiet hours
 DOOR = "binary_sensor.front_door"
@@ -229,7 +230,7 @@ class TestWatch(unittest.TestCase):
         self.watch(3000, 46, self.r.now)
         self.r.tick()
         self.assertEqual(self.state(), ("asleep", f"watch: body battery +6% with no steps by "
-                                                  f"{datetime.fromtimestamp(self.r.now).strftime('%H:%M')}"))
+                                                  f"{clock(datetime.fromtimestamp(self.r.now))}"))
         self.r.person("sam", "home", self.r.now)
         self.r.door(self.r.now)
         self.r.tick()

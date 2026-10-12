@@ -7,26 +7,29 @@ import urllib.error
 import ssl
 from typing import Dict, Any, List
 
+from lodestone import tls
+
 class ImmichClient:
     def __init__(self, config: Dict[str, Any], uploads_dir: str):
         self.url = (config.get("url") or "").rstrip("/")     # "" = not configured: demo data (demo_fallback)
         self.api_key = config.get("api_key", "").strip()
         self.demo_fallback = config.get("demo_fallback", True)
         self.uploads_dir = uploads_dir
+        self._tls_section = config if isinstance(config, dict) else {}
+
+    def _ctx(self) -> ssl.SSLContext:
+        """Certificates are checked (lodestone/tls.py). A self-signed Immich sets `immich.ca_file` or, knowingly, `immich.verify_tls: false`."""
+        return tls.context(self._tls_section, name="immich")
 
     def is_online(self) -> bool:
         try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            ctx = self._ctx()
             req = urllib.request.Request(f"{self.url}/api/server-info/ping", headers={"Accept": "*/*"})
             with urllib.request.urlopen(req, timeout=1.5, context=ctx) as resp:
                 return resp.status == 200
         except Exception:
             try:
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                ctx = self._ctx()
                 req = urllib.request.Request(self.url, headers={"User-Agent": "StoneSage"})
                 with urllib.request.urlopen(req, timeout=1.5, context=ctx) as resp:
                     return resp.status in [200, 301, 302, 401]
@@ -42,9 +45,9 @@ class ImmichClient:
                 req2 = urllib.request.Request(f"{self.url}/api/server-info/storage", headers=headers)
                 stats_data = {}
                 storage_data = {}
-                with urllib.request.urlopen(req1, timeout=2.0) as r1:
+                with urllib.request.urlopen(req1, timeout=2.0, context=self._ctx()) as r1:
                     stats_data = json.loads(r1.read())
-                with urllib.request.urlopen(req2, timeout=2.0) as r2:
+                with urllib.request.urlopen(req2, timeout=2.0, context=self._ctx()) as r2:
                     storage_data = json.loads(r2.read())
 
                 return {

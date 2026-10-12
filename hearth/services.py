@@ -16,6 +16,7 @@ import subprocess
 import threading
 import time
 from lodestone import endpoints
+from lodestone.site import clock
 import urllib.request
 import logging
 
@@ -803,7 +804,7 @@ def _courage_camera_look(cam_eid: str, cam_name: str, people_only: bool = False)
     fcam = ((load_config().get("frigate") or {}).get("cameras") or {}).get(cam_eid)
     lent = _on_loan("vision")
     if lent:   # engine lease: no vision model until then; Frigate's own objects are still live
-        until = datetime.fromtimestamp(lent).strftime("%H:%M")
+        until = clock(datetime.fromtimestamp(lent))
         if fp and fcam:
             try:
                 from hearth.frigate_presence import describe_in_view

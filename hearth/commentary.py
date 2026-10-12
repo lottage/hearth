@@ -45,6 +45,7 @@ import json
 import re
 
 from hearth.persona import home_text
+from lodestone.site import clock
 import threading
 import time
 from datetime import datetime
@@ -345,7 +346,7 @@ class Commentary:
         if age > float(rest["wear_max_age_min"]) * 60:
             return "unknown", f"watch data {round(age / 60)} min old"
         steps, bb = self._wear_change(samples)
-        at = datetime.fromtimestamp(samples[-1]["t"]).strftime("%H:%M")
+        at = clock(datetime.fromtimestamp(samples[-1]["t"]))
         if steps >= float(rest["wear_steps_awake"]) and age <= float(rest["wear_awake_min"]) * 60:
             return "awake", f"watch: {int(steps)} steps by {at}"
         if bb >= 2 and steps <= 10:
@@ -536,7 +537,7 @@ class Commentary:
         for k in who:
             self.pending.pop(k)     # door uses stay: a partner whose GPS catches up a minute later matches the same
         # door, and the room cooldown keeps it to one greeting
-        hour = datetime.fromtimestamp(now).strftime("%A %H:%M")
+        hour = f"{datetime.fromtimestamp(now):%A} {clock(datetime.fromtimestamp(now))}"
         facts = f"Event: they just came home, after about {_hours(away)} away. It is {hour}."
         self.remark(cfg, "arrival", cfg["arrival"]["room"], who, facts, arriving=True, since=since,
                     confirmed_by=sorted(set(ready.values())))
@@ -589,7 +590,7 @@ class Commentary:
                 continue                    # two reads in a row must agree: one misread never speaks
             self.episodes[(camera, act)] = {"start": now, "last": now}
             facts = (f"Event: started {act} in the {room}; the camera shows: {detail or act}. "
-                     f"It is {datetime.fromtimestamp(now).strftime('%A %H:%M')}.")
+                     f"It is {datetime.fromtimestamp(now):%A} {clock(datetime.fromtimestamp(now))}.")
             self.remark(cfg, act, room, who, facts, since=since, vision_ms=vision_ms)
 
     # ------------------------------------------------------------ remark ----

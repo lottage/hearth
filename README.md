@@ -81,17 +81,23 @@ Compose files for the whole stack: language models, a gateway in front of them, 
 download on the first start.
 
 ```
-pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.2"   # brings Lodestone and StoneSage along, at the same release
+pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.3"   # brings Lodestone and StoneSage along, at the same release
 python -m lodestone.installer --docker                        # looks at the machine, writes docker-compose.yml and .env here
-# the installer wrote your API keys into .env; fill HASS_TOKEN (a Home Assistant long-lived access token), then
+# the installer wrote your API keys into .env; HASS_TOKEN (a Home Assistant long-lived access token) can stay empty: the setup wizard asks for it. Then
 docker compose up -d --build
 ```
 
-**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.2) the installer writes `build:`
+**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.3) the installer writes `build:`
 sections: Compose builds the layers' images itself from GitHub at that tag (no clone needed; the first start takes a few
 minutes longer), then downloads the models. For a release with published images the file names them by version instead
-(`ghcr.io/lottage/<layer>:0.1.0-rc.2`, never `latest`). `--build` / `--no-build` override the choice; the one command,
+(`ghcr.io/lottage/<layer>:0.1.0-rc.3`, never `latest`). `--build` / `--no-build` override the choice; the one command,
 `docker compose up -d --build`, works either way.
+
+First start, read this once: stock Ubuntu needs `docker-buildx` (Docker's own repository has it as `docker-buildx-plugin`)
+before the build works, and the installer needs `python3-venv` and `python3-pip` (the step above). Leave `HASS_TOKEN=` empty
+in `.env` if you do not have the token yet: the setup wizard in the cockpit asks for it. The first start downloads several GB
+of base images, then the models. `models` and `stonesage-image` are one-shot containers, so `docker compose ps` shows them
+as "Exited (0)" once they are done, by design; the other services should show "healthy" or "running".
 
 The cockpit is on `http://localhost:8888` (log in with `STONESAGE_API_KEY` from `.env`) and the models' OpenAI-compatible
 address on `http://localhost:8000/v1` (send `LODESTONE_API_KEY` as a bearer), both bound to this computer only until you
@@ -142,7 +148,7 @@ Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both
 of the install:
 
 ```
-git clone --branch v0.1.0-rc.2 https://github.com/lottage/hearth
+git clone --branch v0.1.0-rc.3 https://github.com/lottage/hearth
 cd hearth
 pip install -e .
 ```

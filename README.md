@@ -130,7 +130,9 @@ The voice server corrects near-miss spellings of your household's names (a recog
 
 StoneSage writes a backup of `config.json`, the souls and the small state files every night (config `backup`), keeps the newest
 14, and writes one before it migrates an old settings file; `python -m stonesage.backup create | list | restore <file>` does it
-by hand. A backup holds your secrets and there is no download route: copy the files off the machine yourself. Upgrading is
+by hand. A backup holds your secrets and there is no download route: copy the files off the machine yourself, or let StoneSage
+do it after every backup (config `backup.destinations`: a NAS or USB folder, a synced Google Drive / Dropbox folder, or any
+`rclone` remote, which must be encrypted unless you say otherwise). Upgrading is
 "get the new version and restart" (`docker compose pull && docker compose up -d`, or `git pull`); a settings file written by a
 newer version is refused. [docs/UPGRADING.md](docs/UPGRADING.md) covers upgrading, rolling back and moving to another machine.
 

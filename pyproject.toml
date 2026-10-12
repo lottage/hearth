@@ -11,8 +11,8 @@ requires-python = ">=3.10"
 license = "Unlicense"
 license-files = ["LICENSE"]
 dependencies = [
-  "lodestone @ git+https://github.com/lottage/lodestone",
-  "stonesage @ git+https://github.com/lottage/stonesage",
+  "lodestone @ git+https://github.com/lottage/lodestone@v0.1.0-rc.2",
+  "stonesage @ git+https://github.com/lottage/stonesage@v0.1.0-rc.2",
   "websockets>=12.0",
   "redis>=5.0.0",
   "Pillow>=10.0.0"

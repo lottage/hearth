@@ -2,12 +2,12 @@
 # FROM the one below; this is the one the Compose stack from `python -m lodestone.installer --docker` runs.
 #
 # Shipped as `Dockerfile` in the hearth repository:
-#     docker build -t ghcr.io/lottage/hearth:latest .
+#     docker build -t hearth:local .
 # Needs the stonesage image. Until it is published, build it from the stonesage repository first and say so:
 #     docker build -t stonesage:local ../stonesage
-#     docker build --build-arg STONESAGE_IMAGE=stonesage:local -t ghcr.io/lottage/hearth:latest .
+#     docker build --build-arg STONESAGE_IMAGE=stonesage:local -t hearth:local .
 # The default is a release tag, never `latest`. digest: pin at release.
-ARG STONESAGE_IMAGE=ghcr.io/lottage/stonesage:0.1.0
+ARG STONESAGE_IMAGE=ghcr.io/lottage/stonesage:0.1.0-rc.2
 FROM ${STONESAGE_IMAGE}
 
 # The platform and Lodestone are already in the base image's environment, so only Hearth itself is installed (its

@@ -51,6 +51,29 @@ one server key, a session cookie for browsers, a bearer for scripts, no cross-or
 - **Camera frames, presence and chats** are behind the login like everything else; the Alexa relay is outbound-only and
   sealed with a shared key that the settings API masks.
 
+### What you need first
+
+A clean machine needs these once, before the commands below.
+
+**Python 3.10 or newer with `venv`, and git.** pip fetches the layers from GitHub, so even a pip install needs git. Modern
+Linux (Ubuntu 24.04 among them) refuses `pip install` outside a virtual environment, so make one:
+
+- Ubuntu / Debian: `sudo apt install git python3-venv python3-pip`, then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+- Windows (PowerShell): install Python 3.10+ and Git for Windows, then
+  `py -m venv $HOME\stonesage; & $HOME\stonesage\Scripts\Activate.ps1`
+  (if PowerShell refuses the script: `Set-ExecutionPolicy -Scope Process RemoteSigned`, then repeat)
+- macOS: `brew install python git` (or the python.org installer), then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+
+**For the Docker install: Docker Engine, the Compose plugin and Buildx.** Docker Desktop (Windows, macOS) has all three. On
+Ubuntu or Debian use Docker's own apt repository (`docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+docker-compose-plugin`), or Ubuntu's `docker.io` plus `docker-buildx` and `docker-compose-v2`: `docker.io` alone has no Buildx,
+and the legacy builder it falls back to is deprecated and can fail. Compose 2.20 or newer (`docker compose version`). For an
+NVIDIA GPU also the NVIDIA driver and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/); for an AMD or Intel GPU,
+Linux with `/dev/dri`.
+
 ## Install with Docker
 
 Docker works the same on Linux, Windows and macOS. Hearth's dependencies include Lodestone, whose installer writes the
@@ -58,11 +81,17 @@ Compose files for the whole stack: language models, a gateway in front of them, 
 download on the first start.
 
 ```
-pip install git+https://github.com/lottage/hearth       # brings Lodestone and StoneSage along
-python -m lodestone.installer --docker                  # looks at the machine, writes docker-compose.yml and .env here
+pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.2"   # brings Lodestone and StoneSage along, at the same release
+python -m lodestone.installer --docker                        # looks at the machine, writes docker-compose.yml and .env here
 # the installer wrote your API keys into .env; fill HASS_TOKEN (a Home Assistant long-lived access token), then
-docker compose up -d
+docker compose up -d --build
 ```
+
+**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.2) the installer writes `build:`
+sections: Compose builds the layers' images itself from GitHub at that tag (no clone needed; the first start takes a few
+minutes longer), then downloads the models. For a release with published images the file names them by version instead
+(`ghcr.io/lottage/<layer>:0.1.0-rc.2`, never `latest`). `--build` / `--no-build` override the choice; the one command,
+`docker compose up -d --build`, works either way.
 
 The cockpit is on `http://localhost:8888` (log in with `STONESAGE_API_KEY` from `.env`) and the models' OpenAI-compatible
 address on `http://localhost:8000/v1` (send `LODESTONE_API_KEY` as a bearer), both bound to this computer only until you
@@ -81,17 +110,39 @@ this repository are a ready CPU stack.
 CPU is the default when no usable GPU is visible, so the same command works everywhere (give Docker Desktop at least 8 GB
 of memory for it). Expect roughly 20-40 tokens per second for the small model on a modern desktop CPU and only a few on an
 older server CPU: fine for chat, slow for Computer's voice use, for which a GPU is strongly recommended (waits for the model
-are lengthened automatically on a CPU stack). `--gpu vulkan|cuda|cpu`, `--profile gpu-large|gpu-small|cpu`, `--vision` and `--out DIR` adjust the
-plan. The Hearth image is the StoneSage image plus this app (`Dockerfile` here, `FROM` the StoneSage image). This path is
-tested offline only; it has not yet been run on real GPUs. Until the images are published to ghcr.io, build them
-from the Dockerfiles (each one's header says how: Lodestone's, then StoneSage's, then this one).
+are lengthened automatically on a CPU stack). `--gpu vulkan|cuda|cpu`, `--profile auto|gpu-24gb|gpu-16gb|gpu-12gb|gpu-8gb|gpu-6gb|gpu-4gb|gpu-2gb|cpu`
+(`python -m lodestone.installer --list-profiles` shows the ladder: which card gets which models), `--vision`, `--out DIR` and
+`--build` / `--no-build` adjust the plan. The installer names the card it found and the rung it chose
+(`found Quadro M2000, 4.0 GB -> gpu-4gb`). The Hearth image is the StoneSage image plus this app (`Dockerfile` here,
+`FROM` the StoneSage image).
+
+The Docker path has been run end to end on an NVIDIA GPU (CUDA, a Quadro M2000 with 4 GB, 2026-10-11) and on a CPU-only
+stack (2026-10-12). The AMD / Intel path through `/dev/dri` (Vulkan), and most rungs of the GPU ladder
+(`python -m lodestone.installer --list-profiles`), are tested offline only: the generated files are checked against the
+rules the engines need, not run.
 
 ## Install without Docker (bare metal)
 
-Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both from GitHub as part of the install:
+### What you need first
+
+A clean machine needs these once, before the commands below.
+
+**Python 3.10 or newer with `venv`, and git.** pip fetches the layers from GitHub, so even a pip install needs git. Modern
+Linux (Ubuntu 24.04 among them) refuses `pip install` outside a virtual environment, so make one:
+
+- Ubuntu / Debian: `sudo apt install git python3-venv python3-pip`, then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+- Windows (PowerShell): install Python 3.10+ and Git for Windows, then
+  `py -m venv $HOME\stonesage; & $HOME\stonesage\Scripts\Activate.ps1`
+  (if PowerShell refuses the script: `Set-ExecutionPolicy -Scope Process RemoteSigned`, then repeat)
+- macOS: `brew install python git` (or the python.org installer), then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+
+Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both from GitHub, at the same release, as part
+of the install:
 
 ```
-git clone https://github.com/lottage/hearth
+git clone --branch v0.1.0-rc.2 https://github.com/lottage/hearth
 cd hearth
 pip install -e .
 ```

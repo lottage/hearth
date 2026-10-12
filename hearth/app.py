@@ -435,7 +435,8 @@ def _post_api_presence_ask(h, parsed, body):
 def _post_api_presence_speak(h, parsed, body):
     """POST /api/presence/speak"""
     try:
-        text = body.get("text", "").strip()
+        from stonesage.courage.agent import plain_text
+        text = plain_text(body.get("text", "").strip())   # no markdown or U+202F in what is spoken
         voice = body.get("voice", "bm_george")
         speed = float(body.get("speed", 1.06))
         from harness.connectors.voice_connector import voice_connector
@@ -810,3 +811,5 @@ def install(app_ctx) -> None:
     ctx.add_route("POST", "/api/hass/call", _post_api_hass_call, feature="raw_ha_call")   # raw service call: off unless features.raw_ha_call
     from hearth import setup_wizard
     setup_wizard.install(app_ctx)       # the setup wizard's routes (/api/hearth/setup...)
+    from hearth import ui_status        # what the cockpit page may show of Home (GET /api/ui/features, stonesage/ui_features.py)
+    app_ctx.hooks["ui_features"] = lambda: ui_status.ui_features(setup_wizard._current())

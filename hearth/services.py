@@ -634,6 +634,8 @@ def _sentry_snapshot_bytes(fn: str) -> Optional[bytes]:
     """A wildlife-sentry snapshot from the engine host (name checked: letters, digits, _ . - only, .jpg)."""
     if not re.fullmatch(r"[A-Za-z0-9_.-]+\.jpg", fn or "") or ".." in fn:
         return None
+    if not endpoints.configured("coordinator", config):   # no engine host (fresh install): nothing to ssh to
+        return None
     try:
         sub = subprocess.run(endpoints.ssh_cmd(config, f"cat /opt/cluster-bridge/wildlife/snapshots/{fn}"), capture_output=True, timeout=10)
     except (subprocess.TimeoutExpired, OSError) as e:   # the engine host slow or unreachable: a clean "not found", not a dead request
@@ -852,7 +854,11 @@ TTS_VOICE, TTS_SPEED = "bm_george", 1.06      # what the page's voice mode asks 
 
 def _tts_warm() -> None:
     """Make the audio for every reflex confirmation ahead of time, so a spoken "Living Room TV Lights off." needs no synthesis.
-    Runs once shortly after start (the voice server is shared with live turns) and is quiet when everything is cached."""
+    Runs once shortly after start (the voice server is shared with live turns) and is quiet when everything is cached.
+    No voice server configured (a fresh install): nothing to warm, so nothing is called."""
+    if not endpoints.configured("voice", config):
+        logger.info("TTS cache: no voice server configured, nothing to pre-make")
+        return
     try:
         from hearth import tts_cache
         from hearth import reflex

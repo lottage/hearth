@@ -4,7 +4,10 @@ Moved out of server.py by the layer split (docs/LAYERS.md, 2026-10-09) with bodi
 provides is bound by bind(ctx) (called from hearth/app.py install): context fields, named platform services, and
 the names server.py still lends (HOME_LENT). The platform reaches these services only through hooks."""
 
-from PIL import Image
+try:
+    from PIL import Image    # camera frames are shrunk before the vision model; Hearth still loads without it
+except ImportError:
+    Image = None
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 import base64
@@ -25,6 +28,22 @@ from hearth.hass_client import HomeAssistantClient
 from hearth.immich_client import ImmichClient
 
 logger = logging.getLogger("StoneSage.home")
+_pil_warned = False
+
+
+def _pil_missing() -> bool:
+    """True (and says so, once) when Pillow is not installed: camera frames then go to the vision model at full size, which
+    is slow. Debian/Ubuntu: apt install python3-pil; pip: pip install Pillow."""
+    global _pil_warned
+    if Image is not None:
+        return False
+    if not _pil_warned:
+        _pil_warned = True
+        logger.warning("Pillow (python module PIL) is not installed: camera frames are not shrunk before the vision model, "
+                       "so camera looks will be slow. Install it: apt install python3-pil, or pip install Pillow.")
+    return True
+
+
 immich = None
 
 # bound by bind(app_ctx)
@@ -91,7 +110,7 @@ def capture_live_camera_perception(user_query: str) -> Optional[str]:
 
     try:
         b64_img = None
-        if Image is not None:
+        if not _pil_missing():
             raw_img = Image.open(io.BytesIO(img_bytes))
             w, h = raw_img.size
             scale = min(448 / max(w, h), 1.0)
@@ -166,7 +185,7 @@ def _analyze_single_frame(cam_eid: str, cam_name: str, preset_label: str = "",
         return None
 
     try:
-        if Image is not None:
+        if not _pil_missing():
             raw_img = Image.open(io.BytesIO(img_bytes))
             w, h = raw_img.size
             scale = min(448 / max(w, h), 1.0)
@@ -381,7 +400,7 @@ def _patrol_vision(frame: bytes, where: str, profiles: List[Dict[str, str]]) -> 
         return {"seen": [], "skipped": "vision lent out (engine lease)"}
     who = "; ".join(f"{p['name']}: {p.get('traits', '')}" for p in profiles)
     img = frame
-    if Image is not None:
+    if not _pil_missing():
         im = Image.open(io.BytesIO(frame)).convert("RGB")
         if im.width > 640:
             im = im.resize((640, round(im.height * 640 / im.width)))
@@ -427,7 +446,7 @@ def _commentary_vision(jpeg: bytes, prompt: str) -> str:
     if _on_loan("vision"):
         raise RuntimeError("vision lent out (engine lease)")
     img = jpeg
-    if Image is not None:
+    if not _pil_missing():
         im = Image.open(io.BytesIO(jpeg)).convert("RGB")
         if im.width > 640:
             im = im.resize((640, round(im.height * 640 / im.width)))
@@ -510,7 +529,7 @@ def _alexa_turn(history: List[Dict[str, str]], session_id: str):
         elif ev["type"] == "tool_call":
             logger.info(f"Courage (Alexa) tool: {ev.get('name')} {ev.get('arguments')}")
     if not got_final:
-        answer += " My brain on :8001 isn't answering. Try again in a moment."
+        answer += " I did not get an answer from my language model. Try again in a moment."
     return spoken(answer), bool(agent.pending.get(session_id))
 
 

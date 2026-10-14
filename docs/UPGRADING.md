@@ -44,6 +44,9 @@ Settings, in `config.json` (defaults shown):
 folder. `GET /api/backup/status` (with your login) shows the last backup (time, size, files, anything that could not be read),
 the next run and the last error; `POST /api/backup/run` takes one now.
 
+**Take a fresh backup before a risky change** (an upgrade, a restore, editing `config.json` by hand, moving machines). The daily
+one can be up to a day old, and anything you changed since is not in it.
+
 ## Taking one by hand
 
 ```
@@ -248,6 +251,25 @@ A restore checks the archive before it touches anything (format, every checksum,
 absolute path is refused), then moves each file it replaces aside as `<name>.pre-restore-<time>` and puts the backed-up one in
 its place. It never deletes anything, and files that are in your install but not in the backup are left alone. It refuses while
 the server is running unless you pass `--yes`. A backup made by a newer version than the program is refused.
+
+## Restoring from a backup
+
+Stop the server first (a restore refuses while it runs unless you pass `--yes`). Then look before you leap, and restore:
+
+```
+python3 -m stonesage.backup restore stonesage-backup-20270115T080000Z.tar.gz --dry-run   # checks the archive, lists what it would replace; changes nothing
+python3 -m stonesage.backup restore stonesage-backup-20270115T080000Z.tar.gz             # does it
+```
+
+On Docker use the one-off container shown under "Docker to Docker" below. A restore puts back **files only**: your settings, agents
+and small state. It does not install the program, so on a bare machine install the program and its system packages first.
+
+**System packages a bare-metal restore needs.** On Debian or Ubuntu: `sudo apt install python3 python3-venv python3-pip python3-pil`.
+`python3-pil` (Pillow) is what shrinks camera frames before the vision model; without it Hearth still starts but camera looks are
+slow, and the log says `Pillow ... is not installed`. In a virtual environment `pip install Pillow` does the same job (it is a
+declared dependency, so `pip install` of Hearth brings it along; only a hand-assembled environment lacks it). If an app does not
+load after a restore, the cockpit and Computer now say why (`the hearth app failed to load: ...`); the same text is in the server
+log and in `GET /api/apps` under `failed`.
 
 ## Moving to a new machine
 

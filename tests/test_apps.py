@@ -80,6 +80,18 @@ class TestLoading(unittest.TestCase):
         self.assertEqual(len(logs.output), 2)                  # both failures are reported, not swallowed
         self.assertEqual(c.hooks, {"x": 1})
 
+    def test_why_an_app_is_missing_names_the_import_error(self):
+        # 2026-10-14: a fresh restore had no Pillow, hearth failed to import, and Computer said "'apps' has no 'hearth'"
+        self.make_app("badapp", "import module_that_is_not_installed\ndef install(ctx):\n    pass\n")
+        c = ctx()
+        with self.assertLogs("StoneSage.apps", level="ERROR"):
+            apps.load_apps(["badapp"], c)
+        self.assertEqual(c.why_missing("badapp", ["badapp"]),
+                         "the badapp app failed to load: ModuleNotFoundError: No module named 'module_that_is_not_installed'")
+        self.assertEqual(c.manifest()["failed"], {"badapp": "ModuleNotFoundError: No module named 'module_that_is_not_installed'"})
+        self.assertEqual(c.why_missing("hearth", ["grove"]), "config.json 'apps' has no 'hearth'")
+        self.assertEqual(c.why_missing("hearth", ["hearth"]), "the hearth app is not loaded")
+
     def test_an_old_app_name_loads_its_replacement_once(self):
         self.make_app("goodapp", "def install(ctx):\n    ctx.hooks['x'] = 1\n")
         c = ctx()

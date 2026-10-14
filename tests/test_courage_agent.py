@@ -154,7 +154,8 @@ class TestCourageAgent(unittest.TestCase):
             raise ConnectionRefusedError("refused")
         agent, _ = make_agent(boom)
         events = run(agent, "hello")
-        self.assertIn("isn't answering", events[-1]["content"])
+        self.assertIn("cannot reach my language model", events[-1]["content"])
+        self.assertNotIn(":8001", events[-1]["content"])
 
     def test_history_strips_tool_markup_and_think(self):
         llm = ScriptedLLM(reply("ok"))
@@ -677,21 +678,22 @@ class TestToolCallRecovery(unittest.TestCase):
         events = run(agent, "How are you doing today?")
         self.assertEqual([e["type"] for e in events], ["final"])
         self.assertEqual(events[0]["content"], "It is about 20 degrees in here.")
-        self.assertNotIn("isn't answering", events[0]["content"])
+        self.assertNotIn("language model", events[0]["content"])
 
     def test_a_retry_that_is_also_refused_is_the_honest_brain_message(self):
         engine = FakeEngine(http_500(PARSE_500), http_500(PARSE_500))
         agent, _ = make_agent(engine)
         events = run(agent, "Is Bella inside?")
         self.assertEqual(len(engine.bodies), 2)
-        self.assertIn("isn't answering", events[-1]["content"])
+        self.assertIn("answered with an error (HTTP 500)", events[-1]["content"])
+        self.assertNotIn(":8001", events[-1]["content"])
 
     def test_any_other_500_is_not_retried(self):
         engine = FakeEngine(http_500(b"out of memory"))
         agent, _ = make_agent(engine)
         events = run(agent, "Is Bella inside?")
         self.assertEqual(len(engine.bodies), 1)
-        self.assertIn("isn't answering", events[-1]["content"])
+        self.assertIn("answered with an error (HTTP 500)", events[-1]["content"])
 
     def test_parse_text_calls_accepts_a_raw_newline_and_leaves_plain_text_alone(self):
         from stonesage.courage.agent import parse_text_calls
@@ -700,6 +702,163 @@ class TestToolCallRecovery(unittest.TestCase):
         self.assertEqual(json.loads(calls[0]["function"]["arguments"]), {"camera": "a\nb"})
         self.assertEqual(parse_text_calls("Nothing to see here."), ([], "Nothing to see here."))
         self.assertEqual(parse_text_calls("<tool_call>{broken</tool_call>")[0], [])
+
+
+# What llama.cpp b10818 really answered (captured 2026-10-14 on the rc.6 dry-run box, Qwen3-4B): HTTP 500, Content-Type
+# application/json, this body, for a REQUEST whose history held an assistant tool call with empty or cut-off arguments.
+REAL_500 = (b'{"error":{"code":500,"message":"Failed to parse tool call arguments as JSON: [json.exception.parse_error.101] '
+            b'parse error at line 1, column 11: syntax error while parsing value - unexpected end of input; expected '
+            b'\'[\', \'{\', or a literal","type":"server_error"}}')
+
+
+def history_has_bad_arguments(body):
+    for m in body["messages"]:
+        for c in m.get("tool_calls") or []:
+            try:
+                if not isinstance(json.loads(c["function"]["arguments"]), dict):
+                    return True
+            except (ValueError, TypeError):
+                return True
+    return False
+
+
+class RealLlama:
+    """Behaves like the real server on this point: the whole request is refused with the captured 500 when an assistant
+    tool call in its history has arguments that are not JSON (the model's own earlier output, echoed back)."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.bodies = []
+
+    def __call__(self, url, body, timeout):
+        self.bodies.append(copy.deepcopy(body))
+        if history_has_bad_arguments(body):
+            raise http_500(REAL_500)
+        return self.replies.pop(0)
+
+
+def call_with_raw_arguments(name, raw, cid="c1"):
+    return {"choices": [{"message": {"content": "", "tool_calls": [
+        {"id": cid, "type": "function", "function": {"name": name, "arguments": raw}}]}}]}
+
+
+class TestRealEngineErrors(unittest.TestCase):
+    def test_the_real_error_body_is_recognised_as_a_parse_failure(self):
+        from stonesage.courage.agent import is_parse_failure
+        self.assertTrue(is_parse_failure(http_500(REAL_500)))
+
+    def test_a_call_with_cut_off_arguments_does_not_poison_the_next_request(self):
+        # 2026-10-14: "Is the front door locked?" -> the model's call had cut-off arguments; the loop sent them back in
+        # the history, the engine refused the whole request, the retry resent the same history, and the person was told
+        # the brain was down.
+        engine = RealLlama(call_with_raw_arguments("presence_now", '{"who":'), reply("Nobody is in view."))
+        agent, _ = make_agent(engine)
+        events = run(agent, "Is anyone in the kitchen?")
+        self.assertEqual(events[-1]["content"], "Nobody is in view.")
+        self.assertEqual(len(engine.bodies), 2)
+        sent = engine.bodies[1]["messages"]
+        self.assertEqual([c["function"]["arguments"] for m in sent for c in m.get("tool_calls") or []], ["{}"])
+
+    def test_bad_arguments_become_an_empty_object(self):
+        from stonesage.courage.agent import json_args
+        for raw in ("", None, "{", "[1]", "null", "nonsense"):
+            self.assertEqual(json_args(raw), "{}", repr(raw))
+        self.assertEqual(json.loads(json_args('{"a": "x\ny"}')), {"a": "x\ny"})
+        self.assertEqual(json_args({"a": 1}), '{"a": 1}')
+
+    def test_streamed_calls_with_empty_arguments_are_cleaned_too(self):
+        seen = []
+        replies = [[{"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                                                            "function": {"name": "presence_now", "arguments": ""}}]}}]},
+                    {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}],
+                   [{"choices": [{"delta": {"content": "Bella is in the kitchen."}}]},
+                    {"choices": [{"delta": {}, "finish_reason": "stop"}]}]]
+
+        def stream(url, body, timeout):
+            seen.append(history_has_bad_arguments(body))
+            yield from replies.pop(0)
+        agent, _ = make_agent(lambda *a: (_ for _ in ()).throw(AssertionError("one-shot call used")))
+        agent.stream_post = stream
+        events = run(agent, "Where is Bella?")
+        self.assertEqual(events[-1]["content"], "Bella is in the kitchen.")
+        self.assertEqual(seen, [False, False], "the stream path sent bad arguments back")
+
+    def test_an_unreachable_engine_and_an_engine_error_are_told_apart(self):
+        from stonesage.courage.agent import describe_llm_failure
+        refused = describe_llm_failure(urllib.error.URLError(ConnectionRefusedError(111, "refused")), 90)
+        timeout = describe_llm_failure(TimeoutError("timed out"), 90)
+        errored = describe_llm_failure(http_500(b"boom"), 90)
+        self.assertIn("cannot reach", refused)
+        self.assertIn("did not answer within 90 s", timeout)
+        self.assertIn("answered with an error (HTTP 500)", errored)
+        for text in (refused, timeout, errored):
+            self.assertNotIn(":8001", text)
+        self.assertNotIn("cannot reach", errored)
+
+    def test_a_server_error_is_not_reported_as_the_brain_being_down(self):
+        agent, _ = make_agent(FakeEngine(http_500(b"out of memory")))
+        text = run(agent, "hello")[-1]["content"]
+        self.assertNotIn("isn't answering", text)
+        self.assertNotIn("cannot reach", text)
+
+
+class TestBareToolName(unittest.TestCase):
+    """2026-10-14: "Is anyone home?" was answered with the text `presence_now` (Qwen3-4B wrote the tool's name as its reply)."""
+
+    def test_a_reply_that_is_only_a_tool_name_runs_the_tool(self):
+        for written in ("presence_now", "presence_now()", "`presence_now`", " presence_now({}) ", 'presence_now({"who": "bella"})',
+                        'presence_now {"who": "bella"}'):
+            llm = ScriptedLLM(reply(written), reply("Bella is home."))
+            agent, _ = make_agent(llm)
+            events = run(agent, "Is anyone home?")
+            self.assertEqual([e["type"] for e in events], ["tool_call", "tool_result", "final"], written)
+            self.assertEqual(events[0]["name"], "presence_now")
+            self.assertEqual(events[-1]["content"], "Bella is home.")
+
+    def test_arguments_in_the_text_are_passed_on(self):
+        agent, _ = make_agent(ScriptedLLM(reply('presence_now({"who": "bella"})'), reply("ok")))
+        self.assertEqual(run(agent, "Where is Bella?")[0]["arguments"], {"who": "bella"})
+
+    def test_ordinary_words_and_sentences_are_not_calls(self):
+        for written in ("Nobody is home.", "presence_now is the tool I would use.", "presence", "presence_now(", "ha_call_x"):
+            agent, _ = make_agent(ScriptedLLM(reply(written)))
+            events = run(agent, "Is anyone home?")
+            self.assertEqual([e["type"] for e in events], ["final"], written)
+
+    def test_a_tool_the_agent_does_not_have_is_not_called(self):
+        from stonesage.courage.agent import bare_tool_call
+        self.assertIsNone(bare_tool_call("camera_scan", {"presence_now"}))
+        self.assertIsNotNone(bare_tool_call("camera_scan", {"camera_scan"}))
+
+
+class TestHearthWithoutPillow(unittest.TestCase):
+    """2026-10-14: a fresh Debian restore had no python3-pil and the whole Hearth app failed to import. Pillow only shrinks
+    camera frames, so Hearth must load without it and the camera path must say what is missing."""
+
+    def test_services_load_without_pillow_and_say_what_is_missing(self):
+        import builtins
+        import importlib
+        real_import = builtins.__import__
+
+        def no_pil(name, *a, **k):
+            if name == "PIL" or name.startswith("PIL."):
+                raise ImportError("No module named 'PIL'")
+            return real_import(name, *a, **k)
+        saved = sys.modules.pop("hearth.services", None)
+        builtins.__import__ = no_pil
+        try:
+            svc = importlib.import_module("hearth.services")
+            self.assertIsNone(svc.Image)
+            with self.assertLogs("StoneSage.home", level="WARNING") as logs:
+                self.assertTrue(svc._pil_missing())
+                svc._pil_missing()
+            self.assertEqual(len(logs.output), 1, "said once")
+            self.assertIn("python3-pil", logs.output[0])
+        finally:
+            builtins.__import__ = real_import
+            sys.modules.pop("hearth.services", None)
+            if saved is not None:
+                sys.modules["hearth.services"] = saved
 
 
 if __name__ == "__main__":

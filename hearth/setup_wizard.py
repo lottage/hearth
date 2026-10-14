@@ -390,13 +390,18 @@ def apply_to_running(new: Dict[str, Any], changed: List[str]) -> Dict[str, Any]:
     agent_if_built = ctx.services.get("courage_agent_if_built")
     agent = agent_if_built() if agent_if_built else None
     if agent is not None:
-        agent.tools.deps.household = household_from_config(ctx.config)
+        hh = household_from_config(ctx.config)
+        agent.tools.deps.household = hh
+        soul = getattr(agent, "soul", None)
+        if soul is not None:                       # the persona names only what this household has (cameras, phones, speakers)
+            from hearth.persona import render_persona
+            soul.set_default_persona(render_persona(hh, ha=bool(_stored_ha(ctx.config)[1])))
     restart = any(c.startswith("homeassistant") or c == "household.phones" for c in changed)
     if restart:
         notes.append("Restart StoneSage to pick up phone approvals (they connect to Home Assistant when it starts).")
     if any(c in ("household.people", "household.pets", "household.owner_pronouns") for c in changed):
-        notes.append("Computer's saved persona text keeps the household it was created with; names, tools and cameras "
-                     "follow the change now.")
+        notes.append("Names, tools and cameras follow the change now; Computer's persona text follows too unless you have "
+                     "edited it yourself.")
     return {"restart_needed": restart, "notes": notes}
 
 

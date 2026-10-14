@@ -81,17 +81,19 @@ Compose files for the whole stack: language models, a gateway in front of them, 
 download on the first start.
 
 ```
-pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.8"   # brings Lodestone and StoneSage along, at the same release
-pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.8"   # an existing install moves to this release (all three)
+python3 -m venv ~/stonesage      # once (Windows PowerShell: py -m venv $HOME/stonesage)
+. ~/stonesage/bin/activate       # in every new terminal (Windows: & $HOME/stonesage/Scripts/Activate.ps1)
+pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.9"   # brings Lodestone and StoneSage along, at the same release
+pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.9"   # an existing install moves to this release (all three)
 python -m lodestone.installer --docker                        # looks at the machine, writes docker-compose.yml and .env here
 # the installer wrote your API keys into .env; HASS_TOKEN (a Home Assistant long-lived access token) can stay empty: the setup wizard asks for it. Then
 docker compose up -d --build
 ```
 
-**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.8) the installer writes `build:`
+**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.9) the installer writes `build:`
 sections: Compose builds the layers' images itself from GitHub at that tag (no clone needed; the first start takes a few
 minutes longer), then downloads the models. For a release with published images the file names them by version instead
-(`ghcr.io/lottage/<layer>:0.1.0-rc.8`, never `latest`). `--build` / `--no-build` override the choice; the one command,
+(`ghcr.io/lottage/<layer>:0.1.0-rc.9`, never `latest`). `--build` / `--no-build` override the choice; the one command,
 `docker compose up -d --build`, works either way.
 
 First start, read this once: stock Ubuntu needs `docker-buildx` (Docker's own repository has it as `docker-buildx-plugin`)
@@ -105,7 +107,12 @@ address on `http://localhost:8000/v1` (send `LODESTONE_API_KEY` as a bearer), bo
 change `STONESAGE_BIND` / `LODESTONE_BIND` in `.env`; to reach the cockpit by a host name, list it in `STONESAGE_ALLOWED_HOSTS`. On the first start
 `config.json` is written into the `stonesage-config` volume from the environment (Hearth enabled, the engines as
 `cluster.*_url`, your Home Assistant URL and token); after that it is yours to edit in the cockpit. Describe the house
-there (`household`, `infra_words`, see below). Without Python, `docker/docker-compose.yml` and `docker/.env.example` in
+there (`household`, `infra_words`, see below). **Time zone:** the installer copies this computer's zone into `.env` as `TZ`
+(and asks at a terminal when the computer says UTC or nothing, Enter keeps the default; `--timezone Region/City` sets it
+without asking). The cockpit's clock, greetings and schedules use it. To change it later, edit `TZ=` in `.env` (a name such
+as `Europe/Paris`) and run `docker compose up -d` again; without Docker, set the `TZ` environment variable of the
+process that runs StoneSage (for a systemd unit, `Environment=TZ=Europe/Paris`) or `"server": {"timezone": "..."}` in
+`config.json`. Without Python, `docker/docker-compose.yml` and `docker/.env.example` in
 this repository are a ready CPU stack.
 
 **Home Assistant address and household, on the Docker path.** `.env` carries `HASS_URL` (the installer writes the placeholder
@@ -116,9 +123,20 @@ the URL and the token, and also for the household, so you do not have to edit fi
 `owner_pronouns`, `cameras`, `ptz_cameras`, `default_camera`, `phones`, `speakers`, `descriptions`, and `infra_words`. The wizard is
 complete when it has the URL, the token and at least one person.
 
+**Computer needs the house described before house questions make sense.** The people who live there, and the devices and rooms
+Home Assistant knows about, come from the setup wizard (above): until the Home Assistant URL and token and at least one person
+are saved, Computer has nothing to look at. Before that it still chats, tells stories and answers general questions; asked about
+the house it says it does not know, or answers from whatever Home Assistant person entities it can already read, and it does not
+invent anything. Its tools follow what is configured, and a tool whose prerequisite is missing is not offered (nor mentioned to
+the model): `presence_now` needs a person, a pet, a camera or Home Assistant person entities; `ha_get_states` and `ha_call` need the
+Home Assistant URL and token; `camera_look` and `correct_sighting` need a camera; `camera_scan` a pan-tilt camera;
+`notify` a phone; `speak` a speaker; `run_scene` defined scenes. Add a camera or a phone in the wizard and the matching tool
+appears at once, no restart.
+
 **Talking to Computer from other software.** StoneSage serves an OpenAI-compatible API, so a client can reach Computer directly:
-`POST /v1/chat/completions` with `"model": "computer"` (an alias of the agent id `courage-computer`, which works too) and
-`Authorization: Bearer <STONESAGE_API_KEY>`. `GET /v1/models` lists the agents. It runs Computer's whole tool loop (house tools,
+`POST /v1/chat/completions` with `"model": "courage-computer"` and
+`Authorization: Bearer <STONESAGE_API_KEY>`. `GET /v1/models` lists the agents by id, so Computer appears as `courage-computer`
+(its display name is Computer); `"model": "computer"` is accepted as an alias, so use either. It runs Computer's whole tool loop (house tools,
 approvals), not the bare language model; the bare model is the gateway on port 8000.
 
 | Docker on | CPU | NVIDIA GPU | AMD or Intel GPU |
@@ -147,7 +165,7 @@ rules the engines need, not run.
 research record. It is the same install with one more package and one more flag:
 
 ```
-pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.8" "git+https://github.com/lottage/grove@v0.1.0-rc.8"
+pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.9" "git+https://github.com/lottage/grove@v0.1.0-rc.9"
 python -m lodestone.installer --docker --with-garden
 ```
 
@@ -178,7 +196,7 @@ Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both
 of the install:
 
 ```
-git clone --branch v0.1.0-rc.8 https://github.com/lottage/hearth
+git clone --branch v0.1.0-rc.9 https://github.com/lottage/hearth
 cd hearth
 pip install -e .
 ```

@@ -966,6 +966,7 @@ def courage_home() -> Dict[str, Any]:
     return {
         "deps": dict(
             household=household,
+            ha_configured=lambda: bool(hass is not None and hass.token),
             ha_states=lambda domain: hass.get_states(domain),
             ha_call=lambda domain, service, data: hass.call_service(domain, service, data),
             presence=_courage_presence,
@@ -979,7 +980,7 @@ def courage_home() -> Dict[str, Any]:
             scene_match=lambda text: get_scenes().match(text),
         ),
         "presence_fn": _courage_presence,
-        "persona": render_persona(household),   # the soul's starting persona (soul.py keeps its own copy after)
+        "persona": render_persona(household, ha=bool(hass is not None and hass.token)),   # the soul's starting persona (soul.py keeps its own copy after)
         "reflex_resolve": resolve,
         "learned": LearnedReflexes(os.path.join(_stonesage_data_dir(), "courage_reflexes.json")),
         "phone_approvals": (ha_cfg.get("url", hass.base_url), ha_cfg["token"], phone) if ha_cfg.get("token") and phone else None,

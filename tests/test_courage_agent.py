@@ -1,10 +1,12 @@
 """Offline tests for the Courage tool loop: fake llama server + fake Home Assistant, no network."""
 
 import copy
+import io
 import json
 import os
 import sys
 import unittest
+import urllib.error
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "StoneSage", "backend"))
@@ -619,6 +621,85 @@ class TestQuestionsAreAnswered(unittest.TestCase):
         from stonesage.courage.agent import _without_action_offer
         self.assertEqual(_without_action_offer("Shall I turn on the floodlight?"), "Shall I turn on the floodlight?")
         self.assertEqual(_without_action_offer("It's 72. Want me to raise it?"), "It's 72.")
+
+
+PARSE_500 = b'{"error": {"code": 500, "message": "Failed to parse tool call: Unexpected newline in string"}}'
+
+
+def http_500(body: bytes):
+    return urllib.error.HTTPError("http://fake:8001/v1/chat/completions", 500, "Internal Server Error", {}, io.BytesIO(body))
+
+
+class FakeEngine:
+    """Answers in order. An item that is an exception is raised; every request is recorded."""
+
+    def __init__(self, *items):
+        self.items = list(items)
+        self.bodies = []
+
+    def __call__(self, url, body, timeout):
+        self.bodies.append(copy.deepcopy(body))
+        item = self.items.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+class TestToolCallRecovery(unittest.TestCase):
+    """2026-10-13 (rc.5 dry run): llama.cpp answers 500 "Failed to parse tool call" when the model's tool-call JSON has a raw
+    newline in a string. Computer retries once with parse_tool_calls false and reads the calls from the text, as Grove does."""
+
+    def test_a_raw_newline_in_a_tool_call_runs_the_tool_on_the_retry(self):
+        raw = {"choices": [{"message": {"content": '<tool_call>{"name": "presence_now", "arguments": {"who": "bella\n"}}</tool_call>'}}]}
+        engine = FakeEngine(http_500(PARSE_500), raw, reply("Bella is on the kitchen camera."))
+        agent, _ = make_agent(engine)
+        events = run(agent, "Is Bella inside?")
+        self.assertEqual([e["type"] for e in events], ["tool_call", "tool_result", "final"])
+        self.assertEqual(events[0]["name"], "presence_now")
+        self.assertEqual(events[-1]["content"], "Bella is on the kitchen camera.")
+        self.assertNotIn("parse_tool_calls", engine.bodies[0])
+        self.assertIs(engine.bodies[1]["parse_tool_calls"], False)
+        self.assertNotIn("parse_tool_calls", engine.bodies[2], "only the retry turns the engine's parsing off")
+        self.assertEqual(engine.bodies[2]["messages"][-1]["role"], "tool")
+        self.assertEqual(engine.bodies[2]["messages"][-1]["tool_call_id"], "text-retry-1")
+
+    def test_a_bare_json_reply_with_a_call_is_read_too(self):
+        bare = {"choices": [{"message": {"content": '{"name": "presence_now", "arguments": {"who": "bella"}}'}}]}
+        engine = FakeEngine(http_500(PARSE_500), bare, reply("She is inside."))
+        agent, _ = make_agent(engine)
+        events = run(agent, "Is Bella inside?")
+        self.assertEqual([e["type"] for e in events], ["tool_call", "tool_result", "final"])
+        self.assertEqual(events[-1]["content"], "She is inside.")
+
+    def test_nothing_parseable_on_the_retry_is_the_plain_answer(self):
+        engine = FakeEngine(http_500(PARSE_500), reply("It is about 20 degrees in here."))
+        agent, _ = make_agent(engine)
+        events = run(agent, "How are you doing today?")
+        self.assertEqual([e["type"] for e in events], ["final"])
+        self.assertEqual(events[0]["content"], "It is about 20 degrees in here.")
+        self.assertNotIn("isn't answering", events[0]["content"])
+
+    def test_a_retry_that_is_also_refused_is_the_honest_brain_message(self):
+        engine = FakeEngine(http_500(PARSE_500), http_500(PARSE_500))
+        agent, _ = make_agent(engine)
+        events = run(agent, "Is Bella inside?")
+        self.assertEqual(len(engine.bodies), 2)
+        self.assertIn("isn't answering", events[-1]["content"])
+
+    def test_any_other_500_is_not_retried(self):
+        engine = FakeEngine(http_500(b"out of memory"))
+        agent, _ = make_agent(engine)
+        events = run(agent, "Is Bella inside?")
+        self.assertEqual(len(engine.bodies), 1)
+        self.assertIn("isn't answering", events[-1]["content"])
+
+    def test_parse_text_calls_accepts_a_raw_newline_and_leaves_plain_text_alone(self):
+        from stonesage.courage.agent import parse_text_calls
+        calls, rest = parse_text_calls('Checking.\n<tool_call>{"name": "camera_look", "arguments": {"camera": "a\nb"}}</tool_call>')
+        self.assertEqual(rest, "Checking.")
+        self.assertEqual(json.loads(calls[0]["function"]["arguments"]), {"camera": "a\nb"})
+        self.assertEqual(parse_text_calls("Nothing to see here."), ([], "Nothing to see here."))
+        self.assertEqual(parse_text_calls("<tool_call>{broken</tool_call>")[0], [])
 
 
 if __name__ == "__main__":

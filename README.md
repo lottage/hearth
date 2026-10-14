@@ -81,17 +81,17 @@ Compose files for the whole stack: language models, a gateway in front of them, 
 download on the first start.
 
 ```
-pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.5"   # brings Lodestone and StoneSage along, at the same release
-pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.5"   # an existing install moves to this release (all three)
+pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.6"   # brings Lodestone and StoneSage along, at the same release
+pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.6"   # an existing install moves to this release (all three)
 python -m lodestone.installer --docker                        # looks at the machine, writes docker-compose.yml and .env here
 # the installer wrote your API keys into .env; HASS_TOKEN (a Home Assistant long-lived access token) can stay empty: the setup wizard asks for it. Then
 docker compose up -d --build
 ```
 
-**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.5) the installer writes `build:`
+**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.6) the installer writes `build:`
 sections: Compose builds the layers' images itself from GitHub at that tag (no clone needed; the first start takes a few
 minutes longer), then downloads the models. For a release with published images the file names them by version instead
-(`ghcr.io/lottage/<layer>:0.1.0-rc.5`, never `latest`). `--build` / `--no-build` override the choice; the one command,
+(`ghcr.io/lottage/<layer>:0.1.0-rc.6`, never `latest`). `--build` / `--no-build` override the choice; the one command,
 `docker compose up -d --build`, works either way.
 
 First start, read this once: stock Ubuntu needs `docker-buildx` (Docker's own repository has it as `docker-buildx-plugin`)
@@ -128,6 +128,22 @@ stack (2026-10-12). The AMD / Intel path through `/dev/dri` (Vulkan), and most r
 (`python -m lodestone.installer --list-profiles`), are tested offline only: the generated files are checked against the
 rules the engines need, not run.
 
+## Add-on: Grove
+
+[Grove](https://github.com/lottage/grove) is an optional add-on: agents with no task that write, read the web and keep a
+research record. It is the same install with one more package and one more flag:
+
+```
+pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.6" "git+https://github.com/lottage/grove@v0.1.0-rc.6"
+python -m lodestone.installer --docker --with-garden
+```
+
+Then `docker compose up -d --build`. The [Grove README](https://github.com/lottage/grove) has the firewall steps (the reader's
+network is closed by a script you run as root), how to start a session and how to turn the scheduler on.
+
+The setup wizard (the cockpit's first page) is **complete** when it has the Home Assistant URL, the Home Assistant token and at
+least one household person (`household.people`). Phones, speakers and cameras are suggested, not required.
+
 ## Install without Docker (bare metal)
 
 ### What you need first
@@ -149,7 +165,7 @@ Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both
 of the install:
 
 ```
-git clone --branch v0.1.0-rc.5 https://github.com/lottage/hearth
+git clone --branch v0.1.0-rc.6 https://github.com/lottage/hearth
 cd hearth
 pip install -e .
 ```

@@ -12,7 +12,7 @@ Hearth registers its tools, routes and hooks with the platform when `config.json
 
 | Layer | Repository | Job |
 | --- | --- | --- |
-| 2 | **Hearth** (this repository) | Apps, starting with a Home Assistant house assistant |
+| 2 | **Hearth** (this repository), [Grove](https://github.com/lottage/grove) | Apps: a Home Assistant house assistant; an optional agents add-on |
 | 1 | [StoneSage](https://github.com/lottage/stonesage) | Agent platform: souls, tools, approvals, memory |
 | 0 | [Lodestone](https://github.com/lottage/lodestone) | Serves the models |
 
@@ -81,17 +81,17 @@ Compose files for the whole stack: language models, a gateway in front of them, 
 download on the first start.
 
 ```
-pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.4"   # brings Lodestone and StoneSage along, at the same release
-pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.4"   # an existing install moves to this release (all three)
+pip install "git+https://github.com/lottage/hearth@v0.1.0-rc.5"   # brings Lodestone and StoneSage along, at the same release
+pip install --upgrade "git+https://github.com/lottage/hearth@v0.1.0-rc.5"   # an existing install moves to this release (all three)
 python -m lodestone.installer --docker                        # looks at the machine, writes docker-compose.yml and .env here
 # the installer wrote your API keys into .env; HASS_TOKEN (a Home Assistant long-lived access token) can stay empty: the setup wizard asks for it. Then
 docker compose up -d --build
 ```
 
-**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.4) the installer writes `build:`
+**Images.** While a release has no published images (every pre-release, such as v0.1.0-rc.5) the installer writes `build:`
 sections: Compose builds the layers' images itself from GitHub at that tag (no clone needed; the first start takes a few
 minutes longer), then downloads the models. For a release with published images the file names them by version instead
-(`ghcr.io/lottage/<layer>:0.1.0-rc.4`, never `latest`). `--build` / `--no-build` override the choice; the one command,
+(`ghcr.io/lottage/<layer>:0.1.0-rc.5`, never `latest`). `--build` / `--no-build` override the choice; the one command,
 `docker compose up -d --build`, works either way.
 
 First start, read this once: stock Ubuntu needs `docker-buildx` (Docker's own repository has it as `docker-buildx-plugin`)
@@ -149,7 +149,7 @@ Hearth depends on Lodestone and StoneSage (neither is on PyPI); pip fetches both
 of the install:
 
 ```
-git clone --branch v0.1.0-rc.4 https://github.com/lottage/hearth
+git clone --branch v0.1.0-rc.5 https://github.com/lottage/hearth
 cd hearth
 pip install -e .
 ```

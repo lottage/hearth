@@ -26,8 +26,13 @@ class TestHomeAnswersTheHooks(unittest.TestCase):
             self.assertTrue(callable(server.app_ctx.hook(h)), h)
 
     def test_the_agent_is_built_from_homes_part(self):
-        with mock.patch.object(server, "_courage_agent", None):
+        # Building Computer opens her soul (writes persona.md and the manifest) in the data folder: always a temp one here, never the
+        # source tree's StoneSage/data, whatever environment the test was started in (2026-10-13)
+        import tempfile
+        with tempfile.TemporaryDirectory() as data, mock.patch.dict(os.environ, {"STONESAGE_DATA_DIR": data}),                 mock.patch.object(server, "_courage_agent", None):
             agent = server.get_courage_agent()
+            self.assertTrue(os.path.isfile(os.path.join(data, "souls", "courage-computer", "manifest.json")) or
+                            os.path.isdir(os.path.join(data, "souls", "courage-computer")))
         from hearth.reflex import resolve
         self.assertIs(agent.reflex_resolve, resolve)
         self.assertIs(agent.presence_fn, services._courage_presence)

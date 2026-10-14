@@ -52,23 +52,33 @@ def describe(profile: Optional[Dict[str, Any]], name: str) -> str:
     return f"the {kind} ({traits})" if traits else f"the {kind}"
 
 
-def locate(jpeg: bytes, description: str, vision_url: str, timeout: float = 60) -> Optional[Box]:
-    """Ask the vision model where `description` is in the picture."""
+def locate_prompt(description: str) -> str:
+    return f"Locate {description} in the image. Output its bbox coordinates in JSON format."
+
+
+def prepare(jpeg: bytes) -> Tuple[bytes, int, int]:
+    """The picture as the model is asked about it: WIDTH px wide JPEG, and its size (the answer is in pixels of this one)."""
     from PIL import Image
     im = Image.open(io.BytesIO(jpeg)).convert("RGB")
     if im.width != WIDTH:
         im = im.resize((WIDTH, round(im.height * WIDTH / im.width)))
     buf = io.BytesIO()
     im.save(buf, format="JPEG", quality=85)
+    return buf.getvalue(), im.width, im.height
+
+
+def locate(jpeg: bytes, description: str, vision_url: str, timeout: float = 60) -> Optional[Box]:
+    """Ask the vision model where `description` is in the picture."""
+    small, width, height = prepare(jpeg)
     payload = {"model": "vision", "max_tokens": 120, "temperature": 0, "messages": [{"role": "user", "content": [
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}},
-        {"type": "text", "text": f"Locate {description} in the image. Output its bbox coordinates in JSON format."}]}]}
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(small).decode()}},
+        {"type": "text", "text": locate_prompt(description)}]}]}
     url = vision_url.rstrip("/")
     url = url if url.endswith("/chat/completions") else f"{url}/chat/completions"
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         text = json.load(r)["choices"][0]["message"]["content"]
-    return parse_box(text, im.width, im.height)
+    return parse_box(text, width, height)
 
 
 def frigate_box(frigate_url: str, event_id: str) -> Optional[Box]:

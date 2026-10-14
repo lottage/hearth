@@ -6,7 +6,7 @@ import stonesage as _stonesage
 from lodestone import API_VERSION as _LODESTONE_API
 from lodestone import compat as _compat
 
-__version__ = "0.1.0rc7"
+__version__ = "0.1.0rc8"
 STONESAGE_API = "0.1"    # the StoneSage API this version is written for (stonesage.API_VERSION), checked at import
 LODESTONE_API = "0.1"    # the Lodestone API this version is written for, checked at import
 

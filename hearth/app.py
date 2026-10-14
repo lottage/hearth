@@ -38,6 +38,7 @@ get_commentary = None
 get_frigate_presence = None
 get_ha_presence = None
 get_patrol = None
+get_scenes = None
 hass = None
 immich = None
 load_config = None
@@ -546,6 +547,39 @@ def _post_api_patrol_run(h, parsed, body):
     return
 
 
+# ---- the vision queue: the wildlife sentry hands frames over while the vision engine is lent out (hearth/vision_defer.py) ----
+def _vision_queue():
+    return ctx.services["get_vision_queue"]()
+
+
+def _post_api_vision_queue_frame(h, parsed, body):
+    """POST /api/vision-queue/frame (the sentry's scoped key, or the owner): keep a frame for the vision engine's return."""
+    from hearth.vision_defer import accept_sentry_frame
+    res = accept_sentry_frame(_vision_queue(), body)
+    h.send_json(res, res.pop("status", 200))
+
+
+def _get_api_vision_queue_results(h, parsed, body):
+    """GET /api/vision-queue/results?limit=: the sentry's frames that have been read since, with the frame, until acknowledged."""
+    q = urllib.parse.parse_qs(parsed.query)
+    try:
+        limit = max(1, min(int(q.get("limit", ["20"])[0]), 50))
+    except ValueError:
+        limit = 20
+    h.send_json({"ok": True, "results": _vision_queue().results("sentry", limit)})
+
+
+def _post_api_vision_queue_ack(h, parsed, body):
+    """POST /api/vision-queue/ack {ids: [...]}: these results are in the sentry's log; drop them."""
+    ids = [str(i) for i in (body.get("ids") or []) if isinstance(i, str)][:100]
+    h.send_json({"ok": True, "acked": _vision_queue().ack("sentry", ids)})
+
+
+def _get_api_vision_queue_status(h, parsed, body):
+    """GET /api/vision-queue/status (owner): depth, oldest age, by source, whether the engine is there."""
+    h.send_json({"ok": True, **_vision_queue().status()})
+
+
 def _post_api_commentary_test(h, parsed, body):
     """POST /api/commentary/test"""
     # What Computer would say for a made-up event, never spoken: {trigger, facts, who?: [names], room?}
@@ -560,6 +594,28 @@ def _post_api_commentary_test(h, parsed, body):
                    [str(w)[:30].lower() for w in (body.get("who") or [])][:3], facts, dry=True)
     h.send_json({"ok": rec.get("outcome") == "dry_run", **rec})
     return
+
+
+def _get_api_scenes(h, parsed, body):
+    """GET /api/scenes: the configured scenes (name, script, phrases) and any problem with the config."""
+    from hearth import scenes as scenes_mod
+    block = get_scenes().block()
+    h.send_json({"ok": True, "scenes": [{"name": n, "title": get_scenes().title(n), "script": (block[n] or {}).get("script"),
+                                          "phrases": (block[n] or {}).get("phrases") or [], "confirm": (block[n] or {}).get("confirm") is True}
+                                         for n in get_scenes().names()],
+                 "errors": scenes_mod.config_errors(block)})
+
+
+def _post_api_scenes(h, parsed, body):
+    """POST /api/scenes/<name>/run and /api/scenes/<name>/plan: the one way a scene runs (dashboard, voice, Computer).
+    plan calls nothing. run changes only what is not already right, verifies, and answers with the summary."""
+    parts = [p for p in parsed.path.split("/") if p]          # api, scenes, <name>, run|plan
+    if len(parts) != 4 or parts[3] not in ("run", "plan"):
+        h.send_json({"ok": False, "error": "use /api/scenes/<name>/run or /plan"}, 404)
+        return
+    announce = body.get("announce") if isinstance(body, dict) and isinstance(body.get("announce"), bool) else None
+    res = get_scenes().run(urllib.parse.unquote(parts[2]), plan_only=parts[3] == "plan", announce=announce)
+    h.send_json(res, 404 if "no scene called" in str(res.get("error")) else 200)
 
 
 def _post_api_cameras_webrtc_report(h, parsed, body):
@@ -738,7 +794,7 @@ def _post_api_hass_call(h, parsed, body):
 FROM_SERVICES = ("_apply_presence_correction", "_courage_presence", "_go2rtc_stream_names", "_invalidate_presence",
                  "_presence_corrections", "_sentry_snapshot_bytes", "_sighting_box", "_tts_cache_dir", "_webrtc_streams",
                  "get_adguard_blocks", "get_alexa_relay", "get_commentary", "get_frigate_presence", "get_ha_presence",
-                 "get_patrol")
+                 "get_patrol", "get_scenes")
 
 
 def install(app_ctx) -> None:
@@ -766,6 +822,8 @@ def install(app_ctx) -> None:
                          chat_action=services.chat_action, config_saved=services.config_saved)
     app_ctx.on_start(services.start)
     ctx.add_route("GET", "/api/profiles", _get_api_profiles)
+    ctx.add_route("GET", "/api/scenes", _get_api_scenes)
+    ctx.add_route("POST", "/api/scenes/", _post_api_scenes, prefix=True)
     ctx.add_route("GET", "/api/frigate/presence", _get_api_frigate_presence)
     ctx.add_route("GET", "/api/patrol/status", _get_api_patrol_status)
     ctx.add_route("GET", "/api/ha-presence/status", _get_api_ha_presence_status)
@@ -801,6 +859,13 @@ def install(app_ctx) -> None:
     ctx.add_route("POST", "/api/presence/correct", _post_api_presence_correct)
     ctx.add_route("POST", "/api/presence/profiles", _post_api_presence_correct)
     ctx.add_route("POST", "/api/patrol/run", _post_api_patrol_run)
+    ctx.add_route("POST", "/api/vision-queue/frame", _post_api_vision_queue_frame)
+    ctx.add_route("GET", "/api/vision-queue/results", _get_api_vision_queue_results)
+    ctx.add_route("POST", "/api/vision-queue/ack", _post_api_vision_queue_ack)
+    ctx.add_route("GET", "/api/vision-queue/status", _get_api_vision_queue_status)
+    from hearth.vision_defer import SENTRY_ROUTES, SENTRY_SCOPE
+    # the sentry's own key (config.json vision_queue.key) opens exactly those three routes and nothing else (stonesage/auth.py)
+    ctx.add_scoped_key(SENTRY_SCOPE, SENTRY_ROUTES, lambda cfg: str(((cfg or {}).get("vision_queue") or {}).get("key") or ""))
     ctx.add_route("POST", "/api/commentary/test", _post_api_commentary_test)
     ctx.add_route("POST", "/api/cameras/webrtc-report", _post_api_cameras_webrtc_report)
     ctx.add_route("POST", "/api/cameras/ptz", _post_api_cameras_ptz)

@@ -168,6 +168,18 @@ class HomeAssistantClient:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_script_config(self, object_id: str) -> Optional[Dict[str, Any]]:
+        """The stored config of a script made in Home Assistant's editor (alias, sequence...), or None."""
+        if not self.token or not object_id or not all(c.isalnum() or c == "_" for c in object_id):
+            return None
+        req = urllib.request.Request(f"{self.base_url}/api/config/script/config/{object_id}", headers=self._get_headers())
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                cfg = json.loads(resp.read().decode("utf-8-sig"))
+            return cfg if isinstance(cfg, dict) else None
+        except Exception:
+            return None
+
     def press_button(self, entity_id: str) -> Dict[str, Any]:
         """Press a Home Assistant button entity (e.g. camera PTZ move buttons)."""
         return self.call_service("button", "press", {"entity_id": entity_id})

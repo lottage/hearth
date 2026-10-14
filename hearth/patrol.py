@@ -118,6 +118,10 @@ class Patrol:
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self.on_sweep: Optional[Callable[[Dict[str, Any]], None]] = None   # the trace (courage/trace.py): one record per sweep
+        # "Sweep now" is a person-started use of the vision engine: this runs first, on the sweep's thread, and may take the engine back from
+        # background work that holds it (the garden). Frames read while it is still lent out are deferred (see _look / deliver_late).
+        self.before_manual: Optional[Callable[[], Any]] = None
+        self._tl = threading.local()                    # what the vision function needs to queue the frame being read
 
     # -------------------------------------------------------------- config ----
     def _pcfg(self) -> Dict[str, Any]:
@@ -249,7 +253,7 @@ class Patrol:
             raise MoveFailed()
 
         saved = False
-        stats: Dict[str, Any] = {"vision_calls": 0, "vision_ms": 0.0, "vision_errors": 0}
+        stats: Dict[str, Any] = {"vision_calls": 0, "vision_ms": 0.0, "vision_errors": 0, "deferred": 0}
         stopped, returned, error = "max_frames", "none", None
         try:
             profiles = self._profiles(presence if presence is not None else (self.presence_fn() or {}))
@@ -302,7 +306,7 @@ class Patrol:
                     break                                    # did not move: right end stop
                 frames.append(frame)
                 prev = frame
-                names = self._look(cam, frame, pan, profiles, stats)
+                names = self._look(cam, frame, pan, profiles, stats, entity)
                 if names:
                     seen_log.append({"pan": pan, "seen": names})
                     self._record(entity, cam, names, len(frames) - 1, pan)
@@ -373,7 +377,8 @@ class Patrol:
                "reason": reason, "outcome": outcome, "ms": round((ended - started) * 1000), "frames": len(frames),
                "pans": [start + i * step for i in range(len(frames))], "stopped": "interrupted" if interrupted else stopped,
                "returned": returned, "saved_start": stats.get("saved", True), "seen": seen_log,
-               "vision": {"calls": stats["vision_calls"], "ms": round(stats["vision_ms"]), "errors": stats["vision_errors"]},
+               "vision": {"calls": stats["vision_calls"], "ms": round(stats["vision_ms"]), "errors": stats["vision_errors"],
+                          "deferred": stats.get("deferred", 0)},
                "triggers": triggers}
         if error:
             rec["error"] = error
@@ -387,18 +392,32 @@ class Patrol:
         except Exception:
             pass  # tracing must never break the patrol
 
+    def context(self) -> Dict[str, Any]:
+        """The frame being read on this thread: {entity, pan, camera, profiles}; for a vision function that has to queue it."""
+        return dict(getattr(self._tl, "ctx", None) or {})
+
     def _look(self, cam: Dict[str, Any], frame: bytes, pan: int, profiles: List[Dict[str, str]],
-              stats: Optional[Dict[str, Any]] = None) -> List[str]:
-        """Known profiles in this frame. On a Frigate camera the VLM only runs when Frigate is tracking someone."""
+              stats: Optional[Dict[str, Any]] = None, entity: str = "") -> List[str]:
+        """Known profiles in this frame. On a Frigate camera the VLM only runs when Frigate is tracking someone. While the vision engine is
+        lent out the vision function queues the frame and answers {"deferred": ...}: the names then come from Frigate's own detections
+        (its face / pet identities) straight away, and the queue's late read adds whatever Frigate could not say (deliver_late)."""
         kind, _, name = cam["frames"].partition(":")
+        in_view: List[Dict[str, Any]] = []
         if kind == "frigate":
             try:
-                if not self.frigate_in_view(name):
+                in_view = self.frigate_in_view(name) or []
+                if not in_view:
                     return []
             except Exception:
                 pass  # Frigate unreachable: look anyway
+        self._tl.ctx = {"entity": entity, "pan": pan, "camera": cam.get("name", entity), "profiles": [p["name"] for p in profiles]}
         t = time.time()
         res = self.vision_fn(frame, f"{cam.get('name', '')} (pan {pan} deg)", profiles) or {}
+        if res.get("deferred"):
+            if stats is not None:
+                stats["deferred"] = stats.get("deferred", 0) + 1
+            valid = {p["name"].lower(): p["name"] for p in profiles}
+            return [valid[o["name"].lower()] for o in in_view if isinstance(o.get("name"), str) and o["name"].lower() in valid]
         if stats is not None:
             stats["vision_calls"] += 1
             stats["vision_ms"] += (time.time() - t) * 1000
@@ -406,12 +425,33 @@ class Patrol:
         valid = {p["name"].lower(): p["name"] for p in profiles}
         return [valid[n.lower()] for n in res.get("seen", []) if isinstance(n, str) and n.lower() in valid]
 
-    def _record(self, entity: str, cam: Dict[str, Any], names: List[str], frame_idx: int, pan: int) -> None:
-        now = self.clock()
+    def _record(self, entity: str, cam: Dict[str, Any], names: List[str], frame_idx: int, pan: int,
+                seen_at: Optional[float] = None, late: bool = False) -> None:
+        now = self.clock() if seen_at is None else seen_at
         with self._lock:
             for n in names:
+                cur = self.sightings.get(_key(n))
+                if late and cur is not None and cur["seen_at"] >= now:
+                    continue                                  # a late read never replaces a newer sighting
                 self.sightings[_key(n)] = {"seen_at": now, "entity": entity, "camera": cam.get("name", entity),
-                                           "frame": frame_idx, "pan": pan}
+                                           "frame": frame_idx, "pan": pan, **({"late": True} if late else {})}
+
+    def deliver_late(self, item: Dict[str, Any], text: str, frame: bytes) -> bool:
+        """A frame the vision engine could not read during the sweep (lent out) was read afterwards (stonesage/vision_queue.py). Names from
+        the answer become sightings dated when the frame was taken, never over a newer one; the frame is kept so the card can show it."""
+        meta = item.get("meta") or {}
+        entity = meta.get("entity") or ""
+        cam = (self._pcfg().get("cameras") or {}).get(entity) or {}
+        valid = {n.lower(): n for n in meta.get("profiles") or []}
+        names = [valid[n.lower()] for n in parse_vision_json(text).get("seen", []) if isinstance(n, str) and n.lower() in valid]
+        if not names or not entity:
+            return False
+        with self._lock:
+            kept = self.frames.setdefault(entity, [])
+            kept.append(frame)
+            idx = len(kept) - 1
+        self._record(entity, cam, names, idx, int(meta.get("pan") or 0), seen_at=float(item["at"]), late=True)
+        return True
 
     # ----------------------------------------------------------- corrections ----
     def correct(self, ref: str, shown: str, action: str, name: str = "") -> Dict[str, Any]:
@@ -461,7 +501,7 @@ class Patrol:
         with self._lock:
             items = list(self.sightings.items())
         return {k: {"minutes_ago": round((now - v["seen_at"]) / 60, 1), "mtime": v["seen_at"], "camera": v["camera"],
-                    "doing": f"seen on patrol (pan {v['pan']} deg)", "source": "patrol",
+                    "doing": f"seen on patrol (pan {v['pan']} deg{', read late' if v.get('late') else ''})", "source": "patrol",
                     "patrol_ref": f"{v['entity']}|{v['frame']}",
                     "snapshot_url": f"/api/patrol/frame?entity={v['entity']}&i={v['frame']}"} for k, v in items}
 
@@ -515,7 +555,16 @@ class Patrol:
         if not self._claim(entity):                    # claimed here, so the scheduler cannot start a second sweep
             return {"ok": False, "error": "already sweeping"}
         self.manual_at.pop(entity, None)
-        threading.Thread(target=self._sweep, args=(entity, cam, None, "manual"), daemon=True).start()
+
+        def go() -> None:
+            if self.before_manual:
+                try:
+                    self.before_manual()
+                except Exception:
+                    pass                                     # the sweep goes ahead; frames the engine cannot read are queued
+            self._sweep(entity, cam, None, "manual")
+
+        threading.Thread(target=go, daemon=True).start()
         return {"ok": True}
 
 

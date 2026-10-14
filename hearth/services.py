@@ -51,6 +51,8 @@ LOCAL_TZ = None          # the installation's time zone (platform service, lodes
 ROOT_DIR = None
 _engine_lease = None
 _on_loan = None
+_get_vision_queue = None      # platform: frames that wait for the vision engine (stonesage/vision_queue.py)
+_hot_load_vision = None       # platform: a person-started camera request takes the vision card back from the garden
 _stonesage_data_dir = None
 config = None
 get_courage_agent = None
@@ -392,11 +394,25 @@ def _patrol_frame(source: str) -> Optional[bytes]:
     return None
 
 
+_deferrer = None
+
+
+def get_deferrer():
+    """What happens to background vision work while the vision engine is lent out (hearth/vision_defer.py), or None without a queue."""
+    global _deferrer
+    if _deferrer is None and _get_vision_queue is not None:
+        from hearth.vision_defer import Deferrer
+        _deferrer = Deferrer(_get_vision_queue, _on_loan)
+    return _deferrer
+
+
 def _patrol_vision(frame: bytes, where: str, profiles: List[Dict[str, str]]) -> Dict[str, Any]:
     """Ask the vision model which known profiles ([{name, traits}]) are in a patrol frame; JSON answer, names checked
-    by the caller."""
+    by the caller. While the engine is lent out the frame is queued and the answer says "deferred" (Patrol._look then uses
+    Frigate's detections now; the late read arrives through Patrol.deliver_late)."""
     from hearth.patrol import parse_vision_json
-    if _on_loan("vision"):
+    lent = bool(_on_loan("vision"))
+    if lent and get_deferrer() is None:
         return {"seen": [], "skipped": "vision lent out (engine lease)"}
     who = "; ".join(f"{p['name']}: {p.get('traits', '')}" for p in profiles)
     img = frame
@@ -410,6 +426,8 @@ def _patrol_vision(frame: bytes, where: str, profiles: List[Dict[str, str]]) -> 
     prompt = (f"Camera {where}. Known household: {who}. Which of them are visible in this frame? "
               'Reply with JSON only: {"seen": [names from the list], "note": "one short sentence of what is in view"}. '
               "Use an empty list if none of them is clearly visible.")
+    if lent:
+        return get_deferrer().patrol(img, prompt, get_patrol().context())
     payload = {"model": "vision", "max_tokens": 80, "temperature": 0.1, "messages": [{"role": "user", "content": [
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(img).decode()}},
         {"type": "text", "text": prompt}]}]}
@@ -435,6 +453,8 @@ def get_patrol():
                          _courage_presence,  # includes the patrol's own sightings: a resident seen on patrol = home
                          state_path=os.path.join(ROOT_DIR, "data", "patrol_state.json"))
         _patrol.on_sweep = get_trace_log().write
+        if _hot_load_vision is not None:     # "Sweep now": a person wants the camera engine, the garden hands it back
+            _patrol.before_manual = lambda: _hot_load_vision(why="sweep", source="sweep")
     return _patrol
 
 
@@ -442,8 +462,9 @@ _commentary = None
 
 
 def _commentary_vision(jpeg: bytes, prompt: str) -> str:
-    """One vision-model read of a frame (shrunk to 640 px wide), plain text back."""
-    if _on_loan("vision"):
+    """One vision-model read of a frame (shrunk to 640 px wide), plain text back. While the engine is lent out the frame is queued
+    (a late read is traced, never spoken) and this raises, as before."""
+    if _on_loan("vision") and get_deferrer() is None:
         raise RuntimeError("vision lent out (engine lease)")
     img = jpeg
     if not _pil_missing():
@@ -453,6 +474,8 @@ def _commentary_vision(jpeg: bytes, prompt: str) -> str:
         buf = io.BytesIO()
         im.save(buf, format="JPEG", quality=80)
         img = buf.getvalue()
+    if _on_loan("vision"):
+        get_deferrer().commentary(img, prompt, dict(get_commentary().read_ctx))
     payload = {"model": "vision", "max_tokens": 60, "temperature": 0.1, "messages": [{"role": "user", "content": [
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(img).decode()}},
         {"type": "text", "text": prompt}]}]}
@@ -486,6 +509,21 @@ def _commentary_seen_since(name: str, since: float) -> Optional[str]:
     if not loc or loc.get("minutes_ago") is None:
         return None
     return (loc.get("camera") or loc.get("room") or "a camera") if time.time() - loc["minutes_ago"] * 60 >= since - 30 else None
+
+
+_scenes = None
+
+
+def get_scenes():
+    """Scenes: Home Assistant scripts run as a checked diff (hearth/scenes.py). config.json "scenes" is read on every use."""
+    global _scenes
+    if _scenes is None:
+        from hearth.scenes import Scenes
+        from stonesage.courage.tools import infra_words
+        _scenes = Scenes(lambda: load_config(), lambda d=None: hass.get_states(d), lambda *a, **k: hass.call_service(*a, **k),
+                         lambda oid: hass.get_script_config(oid), speak=_courage_speak,
+                         infra_words=lambda: infra_words(_household().infra_words))
+    return _scenes
 
 
 _ha_presence = None
@@ -690,6 +728,11 @@ def _sighting_box(source: str, ref: str, name: str) -> Optional[List[float]]:
         else:
             raise ValueError("unknown source")
         if not jpeg:
+            return None
+        if _on_loan("vision") and get_deferrer() is not None:
+            # the vision engine is lent out: no box now, the lookup waits in the queue and lands in the cache for the next view
+            small, bw, bh = sb.prepare(jpeg)
+            get_deferrer().box(key, small, sb.locate_prompt(sb.describe(_profile(name), name)), [bw, bh])
             return None
         with _vision_lock:
             known, box = _box_cache.get(key)          # another card may have asked for the same one meanwhile
@@ -931,6 +974,9 @@ def courage_home() -> Dict[str, Any]:
             correct_sighting=_courage_correct_sighting,
             notify=_courage_notify,
             speak=_courage_speak,
+            run_scene=lambda name, plan_only=False: get_scenes().run(name, plan_only=plan_only),
+            scene_names=lambda: get_scenes().names(),
+            scene_match=lambda text: get_scenes().match(text),
         ),
         "presence_fn": _courage_presence,
         "persona": render_persona(household),   # the soul's starting persona (soul.py keeps its own copy after)
@@ -1277,6 +1323,20 @@ def ground_context(agent_id: str, user_query: str) -> List[str]:
     return injections
 
 
+def _box_put(key: str, box: Optional[List[float]]) -> None:
+    global _box_cache
+    from hearth import sighting_boxes as sb
+    if _box_cache is None:
+        _box_cache = sb.BoxCache(os.path.join(ROOT_DIR, "data", "sighting_boxes.json"))
+    _box_cache.put(key, box)
+
+
+def _register_late_handlers() -> None:
+    from hearth import sighting_boxes as sb
+    from hearth.vision_defer import register_handlers
+    register_handlers(_get_vision_queue(), get_patrol, get_commentary, _box_put, sb.parse_box)
+
+
 def start() -> None:
     """Home's background services (registered with the platform's on_start by hearth/app.py)."""
     # Warm Computer's presence cache so the first question doesn't pay the ~1.4 s presence read
@@ -1284,6 +1344,8 @@ def start() -> None:
     threading.Timer(45.0, _tts_warm).start()  # a little after start: the voice server is shared with live turns
     if get_frigate_presence():
         threading.Thread(target=_frigate_presence.start, daemon=True, name="frigate-presence-start").start()
+    if _get_vision_queue is not None:
+        _register_late_handlers()  # frames that waited for the vision engine go back to patrol / commentary / the box cache
     if (config.get("patrol") or {}).get("enabled"):
         get_patrol().start()  # PTZ sweeps (hearth/patrol.py); checks every minute which camera is due
     if (config.get("ha_presence") or {}).get("enabled"):
@@ -1354,6 +1416,9 @@ def bind(app_ctx) -> None:
     _engine_lease = app_ctx.services["_engine_lease"]
     global _on_loan
     _on_loan = app_ctx.services["_on_loan"]
+    global _get_vision_queue, _hot_load_vision
+    _get_vision_queue = app_ctx.services.get("get_vision_queue")
+    _hot_load_vision = app_ctx.services.get("hot_load_vision")
     global get_courage_agent
     get_courage_agent = app_ctx.services["get_courage_agent"]
     global get_trace_log

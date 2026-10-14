@@ -34,3 +34,14 @@ Writes `out/` (GITIGNORED: `index.js` contains the key): `index.js`, `package.js
 - Check it: `GET http://localhost:8888/api/alexa-relay/status` (requests, answered, announced, rejected, last_error, `users_seen`).
   `users_seen` holds a hash of the Alexa user id; put the owner's in `config.json alexa_relay.allowed_users` (a list) to refuse anyone else.
 - Key leaked or lost: replace `alexa_relay.key` in both config.json files (local and the StoneSage host), rebuild, paste `index.js` again.
+
+## Scenes by voice ("movie night") -- the step that is easy to miss
+A bare "Alexa, movie night" never reaches a custom skill (Alexa only passes free text after "ask computer to ..."), and
+Home Assistant's sentence-trigger automations are not heard by Alexa at all (they only see Assist, i.e. the app and Assist
+satellites). To get the bare phrase to Computer, make an **Alexa Routine** per scene (Alexa app > More > Routines):
+- When: **Voice** -> "movie night"; Action: **Skills** or **Custom** -> `ask computer to start movie night`
+  (`start` and `run` are carrier words already in `build_skill.py` COMMANDS; the sentence after it must be a phrase in
+  `config.json scenes.<name>.phrases`, or the scene name, and then Computer runs the scene without the model).
+- Disable any other routine, smart-home group or HA-exposed script that is also named "movie night", or Alexa picks that one.
+- "good night" is a built-in SIMPLE intent of the skill (a greeting, not the bedtime scene): use "start bedtime" in the routine.
+Check the result in the trace (TRACE tab): kind courage, path reflex, tool run_scene.

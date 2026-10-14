@@ -61,6 +61,8 @@ BUDGET_WINDOW_S = 24 * 3600  # daily_budget counts remarks spoken in this rollin
 STIR_KEEP_S = 12 * 3600      # how far back signs of life are kept
 SYNC_GAP_S = 300             # watch samples closer than this belong to one sync (steps and body battery land apart)
 
+LATE_MAX_AGE_S = 600       # a read that waited for the vision engine is used only if its frame is younger than this
+
 DEFAULTS: Dict[str, Any] = {
     "enabled": False, "mode": "log", "daily_budget": 6, "room_cooldown_min": 10,
     "residents": [],                                    # [] = the household's people (config.json household)
@@ -219,6 +221,7 @@ class Commentary:
         self.door_uses: List[float] = []                 # recent door use times
         self.reads: Dict[str, List[Tuple[float, str]]] = {}   # camera -> recent (time, activity) reads
         self.last_read: Dict[str, float] = {}
+        self.read_ctx: Dict[str, Any] = {}               # the camera / room / who of the read in progress (the vision service queues by it)
         self.episodes: Dict[Tuple[str, str], Dict[str, Any]] = {}  # (camera, activity) -> {start, last, spoken}
         self.state: Dict[str, Any] = {"spoken_at": [], "logged_at": [], "room_last": {}, "recent": []}
         self.stirs: List[Tuple[float, str]] = []         # (time, source): signs someone in the house is awake
@@ -572,6 +575,7 @@ class Commentary:
             if not jpeg:
                 continue
             t0 = time.time()
+            self.read_ctx = {"camera": camera, "room": room, "who": who}     # what the vision service needs to queue this frame
             try:
                 act, detail = parse_activity(self.vision(jpeg, VISION_PROMPT.format(where=camera.replace("_", " "))))
             except Exception as e:
@@ -592,6 +596,27 @@ class Commentary:
             facts = (f"Event: started {act} in the {room}; the camera shows: {detail or act}. "
                      f"It is {datetime.fromtimestamp(now):%A} {clock(datetime.fromtimestamp(now))}.")
             self.remark(cfg, act, room, who, facts, since=since, vision_ms=vision_ms)
+
+    # ------------------------------------------------- a read that waited for the vision engine ----
+    def deliver_late(self, item: Dict[str, Any], text: str, frame: bytes = b"") -> Dict[str, Any]:
+        """The vision engine was lent out (the garden) when this frame was read; the queue (stonesage/vision_queue.py) read it afterwards.
+        A late read never speaks: the moment has gone. Older than commentary.late_max_age_s (600) it is skipped (traced as held); a fresh
+        one counts as a read for the next two-reads-agree check. Both leave a trace record, marked late."""
+        cfg = self.cfg_fn() or {}
+        limit = float((cfg.get("commentary") or {}).get("late_max_age_s", LATE_MAX_AGE_S))
+        age = self.clock() - float(item.get("at") or self.clock())
+        meta = item.get("meta") or {}
+        rec: Dict[str, Any] = {"trigger": "activity", "room": meta.get("room", ""), "who": meta.get("who") or [], "late": True,
+                               "late_age_s": round(age), "facts": "late vision read of the %s camera" % item.get("camera", "")}
+        if age > limit:
+            rec.update(outcome="held", held="late read is stale (%d min old)" % round(age / 60))
+            return self._record(rec)
+        act, detail = parse_activity(text)
+        camera = item.get("camera") or ""
+        if act in ACTIVITIES:
+            self.reads[camera] = (self.reads.get(camera, []) + [(float(item["at"]), act)])[-10:]
+        rec.update(outcome="logged", activity=act, evidence=detail)
+        return self._record(rec)
 
     # ------------------------------------------------------------ remark ----
     def compose(self, room: str, who: List[str], facts: str) -> str:
